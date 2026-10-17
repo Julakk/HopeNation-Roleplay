@@ -27,3 +27,11 @@ Thumbs.db
 # Runtime
 crashinfo/
 server_log.txt
+
+# Local development tools
+tools/pawn-compiler-android/
+tools/pawn/compiler/build/
+tools/pawn/compiler/build-*/
+
+# Local Pawn compiler
+tools/pawn/
