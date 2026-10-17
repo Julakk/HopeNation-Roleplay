@@ -1,5 +1,11 @@
 #pragma rational Float
+
 #include <a_samp>
+
+#include "modules/core.pwn"
+#include "modules/player.pwn"
+#include "modules/commands.pwn"
+#include "modules/utils.pwn"
 
 main()
 {
@@ -11,7 +17,9 @@ main()
 
 public OnGameModeInit()
 {
-    SetGameModeText("HopeCity RP");
+    Core_Init();
+    Player_Init();
+    Commands_Init();
 
     AddPlayerClass(
         0,
@@ -28,7 +36,24 @@ public OnGameModeInit()
 
 public OnPlayerConnect(playerid)
 {
-    SendClientMessage(playerid, 0x00FF00FF, "Selamat datang di HopeCity Roleplay!");
-    SendClientMessage(playerid, 0xFFFFFFFF, "Development Build - Server sedang dalam tahap pengembangan.");
+    Player_OnConnect(playerid);
+    Utils_SendWelcome(playerid);
     return 1;
+}
+
+public OnPlayerSpawn(playerid)
+{
+    Player_OnSpawn(playerid);
+    return 1;
+}
+
+public OnPlayerDisconnect(playerid, reason)
+{
+    Player_OnDisconnect(playerid, reason);
+    return 1;
+}
+
+public OnPlayerCommandText(playerid, cmdtext[])
+{
+    return Commands_OnText(playerid, cmdtext);
 }
