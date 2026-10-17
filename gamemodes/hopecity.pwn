@@ -6,6 +6,7 @@
 #include "modules/player.pwn"
 #include "modules/commands.pwn"
 #include "modules/utils.pwn"
+#include "modules/auth.pwn"
 
 main()
 {
@@ -20,6 +21,7 @@ public OnGameModeInit()
     Core_Init();
     Player_Init();
     Commands_Init();
+    Auth_Init();
 
     AddPlayerClass(
         0,
@@ -37,6 +39,7 @@ public OnGameModeInit()
 public OnPlayerConnect(playerid)
 {
     Player_OnConnect(playerid);
+    Auth_OnConnect(playerid);
     Utils_SendWelcome(playerid);
     return 1;
 }
@@ -56,4 +59,10 @@ public OnPlayerDisconnect(playerid, reason)
 public OnPlayerCommandText(playerid, cmdtext[])
 {
     return Commands_OnText(playerid, cmdtext);
+}
+
+public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
+{
+    #pragma unused listitem
+    return Auth_OnDialogResponse(playerid, dialogid, response, inputtext);
 }
