@@ -1,0 +1,29 @@
+# Build
+*.amx
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Termux
+.termux/
+
+# Local configuration
+.env
+*.local
+
+# Database
+*.sql.bak
+
+# Runtime
+crashinfo/
+server_log.txt
