@@ -3,21 +3,17 @@
 #endif
 #define _HOPECITY_AUTH
 
-#include <async_crypto>
+
 
 #define DIALOG_AUTH 1000
 #define DIALOG_REGISTER 1001
 #define DIALOG_LOGIN 1002
 
-new AuthHashRequest[MAX_PLAYERS];
-new AuthVerifyRequest[MAX_PLAYERS];
+#define AUTH_SALT_LEN 16
+#define AUTH_MAX_ATTEMPTS 3
+#define AUTH_MIN_PASSWORD 6
+
 new AuthLoginAttempts[MAX_PLAYERS];
-
-new AuthPendingName[MAX_PLAYERS][MAX_PLAYER_NAME];
-new AuthPendingPassword[MAX_PLAYERS][128];
-
-forward Auth_OnPasswordHashed(requestid, status, const result[]);
-forward Auth_OnPasswordVerified(requestid, status, const result[]);
 
 stock Auth_Init()
 {
@@ -28,10 +24,19 @@ stock Auth_Init()
 stock Auth_ResetPlayer(playerid)
 {
     AuthLoginAttempts[playerid] = 0;
-    AuthHashRequest[playerid] = 0;
-    AuthVerifyRequest[playerid] = 0;
-    AuthPendingName[playerid][0] = EOS;
-    AuthPendingPassword[playerid][0] = EOS;
+    return 1;
+}
+
+stock Auth_MakeSalt(salt[])
+{
+    static const chars[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
+    for (new i = 0; i < AUTH_SALT_LEN; i++)
+    {
+        salt[i] = chars[random(sizeof chars - 1)];
+    }
+
+    salt[AUTH_SALT_LEN] = EOS;
     return 1;
 }
 
@@ -42,7 +47,7 @@ stock Auth_ShowRegister(playerid)
         DIALOG_REGISTER,
         DIALOG_STYLE_PASSWORD,
         "HopeCity Roleplay - Register",
-        "Buat password untuk akun kamu:",
+        "Buat password untuk akun kamu (minimal 6 karakter):",
         "Register",
         "Keluar"
     );
@@ -89,112 +94,7 @@ stock Auth_OnDisconnect(playerid)
     return 1;
 }
 
-stock Auth_FindHashPlayer(requestid)
-{
-    for (new playerid = 0; playerid < MAX_PLAYERS; playerid++)
-    {
-        if (AuthHashRequest[playerid] == requestid)
-        {
-            return playerid;
-        }
-    }
-
-    return INVALID_PLAYER_ID;
-}
-
-stock Auth_FindVerifyPlayer(requestid)
-{
-    for (new playerid = 0; playerid < MAX_PLAYERS; playerid++)
-    {
-        if (AuthVerifyRequest[playerid] == requestid)
-        {
-            return playerid;
-        }
-    }
-
-    return INVALID_PLAYER_ID;
-}
-
-public Auth_OnPasswordHashed(requestid, status, const result[])
-{
-    new playerid = Auth_FindHashPlayer(requestid);
-
-    if (playerid == INVALID_PLAYER_ID)
-    {
-        return 1;
-    }
-
-    AuthHashRequest[playerid] = 0;
-
-    if (status != CRYPTO_STATUS_OK)
-    {
-        SendClientMessage(playerid, 0xFF0000FF, "Gagal membuat password hash. Silakan coba lagi.");
-        Auth_ShowRegister(playerid);
-        return 1;
-    }
-
-    if (!Database_SaveAccount(AuthPendingName[playerid], result))
-    {
-        SendClientMessage(playerid, 0xFF0000FF, "Gagal menyimpan akun. Silakan coba lagi.");
-        Auth_ShowRegister(playerid);
-        return 1;
-    }
-
-    SendClientMessage(playerid, 0x00FF00FF, "Registrasi berhasil!");
-    SendClientMessage(playerid, 0xFFFFFFFF, "Silakan login menggunakan password yang baru dibuat.");
-
-    AuthPendingName[playerid][0] = EOS;
-    Auth_ShowLogin(playerid);
-
-    return 1;
-}
-
-public Auth_OnPasswordVerified(requestid, status, const result[])
-{
-    new playerid = Auth_FindVerifyPlayer(requestid);
-
-    if (playerid == INVALID_PLAYER_ID)
-    {
-        return 1;
-    }
-
-    AuthVerifyRequest[playerid] = 0;
-    AuthPendingPassword[playerid][0] = EOS;
-
-    if (status != CRYPTO_STATUS_OK)
-    {
-        SendClientMessage(playerid, 0xFF0000FF, "Gagal memverifikasi password. Silakan coba lagi.");
-        Auth_ShowLogin(playerid);
-        return 1;
-    }
-
-    if (!strcmp(result, "1", true))
-    {
-        PlayerData[playerid][Player_LoggedIn] = 1;
-
-        SendClientMessage(playerid, 0x00FF00FF, "Login berhasil!");
-        SendClientMessage(playerid, 0xFFFFFFFF, "Selamat bermain di HopeCity Roleplay.");
-
-        SetSpawnInfo(playerid, 0, 0, 1481.0, -1771.0, 18.8, 90.0, 0, 0, 0, 0, 0, 0);
-        SpawnPlayer(playerid);
-    }
-    else
-    {
-        if (++AuthLoginAttempts[playerid] >= 3)
-        {
-            SendClientMessage(playerid, 0xFF0000FF, "Terlalu banyak percobaan. Kamu di-kick.");
-            Kick(playerid);
-            return 1;
-        }
-
-        SendClientMessage(playerid, 0xFF0000FF, "Password salah.");
-        Auth_ShowLogin(playerid);
-    }
-
-    return 1;
-}
-
-stock Auth_OnDialogResponse(playerid, dialogid, response, const inputtext[])
+stock Auth_OnDialogResponse(playerid, dialogid, response, inputtext[])
 {
     if (dialogid == DIALOG_AUTH)
     {
@@ -218,9 +118,9 @@ stock Auth_OnDialogResponse(playerid, dialogid, response, const inputtext[])
             return 1;
         }
 
-        if (strlen(inputtext) < 4)
+        if (strlen(inputtext) < AUTH_MIN_PASSWORD)
         {
-            SendClientMessage(playerid, 0xFF0000FF, "Password minimal 4 karakter.");
+            SendClientMessage(playerid, 0xFF0000FF, "Password minimal 6 karakter.");
             Auth_ShowRegister(playerid);
             return 1;
         }
@@ -232,27 +132,24 @@ stock Auth_OnDialogResponse(playerid, dialogid, response, const inputtext[])
             return 1;
         }
 
-        format(
-            AuthPendingName[playerid],
-            MAX_PLAYER_NAME,
-            "%s",
-            PlayerData[playerid][Player_Name]
-        );
+        new salt[AUTH_SALT_LEN + 1];
+        new hash[65];
+        new stored[96];
 
-        AuthHashRequest[playerid] = Crypto_Argon2Hash(
-            inputtext,
-            "Auth_OnPasswordHashed"
-        );
+        Auth_MakeSalt(salt);
+        SHA256_PassHash(inputtext, salt, hash, sizeof hash);
+        format(stored, sizeof stored, "%s$%s", salt, hash);
 
-        if (AuthHashRequest[playerid] <= 0)
+        if (!Database_SaveAccount(PlayerData[playerid][Player_Name], stored))
         {
-            AuthHashRequest[playerid] = 0;
-            SendClientMessage(playerid, 0xFF0000FF, "Gagal memulai proses registrasi.");
+            SendClientMessage(playerid, 0xFF0000FF, "Gagal menyimpan akun. Silakan coba lagi.");
             Auth_ShowRegister(playerid);
             return 1;
         }
 
-        SendClientMessage(playerid, 0xFFFFFFFF, "Password sedang diproses dengan aman...");
+        SendClientMessage(playerid, 0x00FF00FF, "Registrasi berhasil!");
+        SendClientMessage(playerid, 0xFFFFFFFF, "Silakan login menggunakan password yang baru dibuat.");
+        Auth_ShowLogin(playerid);
         return 1;
     }
 
@@ -264,19 +161,12 @@ stock Auth_OnDialogResponse(playerid, dialogid, response, const inputtext[])
             return 1;
         }
 
-        if (strlen(inputtext) < 4)
-        {
-            SendClientMessage(playerid, 0xFF0000FF, "Password tidak valid.");
-            Auth_ShowLogin(playerid);
-            return 1;
-        }
-
-        new password_hash[256];
+        new stored[96];
 
         if (!Database_GetPasswordHash(
             PlayerData[playerid][Player_Name],
-            password_hash,
-            sizeof password_hash
+            stored,
+            sizeof stored
         ))
         {
             SendClientMessage(playerid, 0xFF0000FF, "Akun belum terdaftar.");
@@ -284,30 +174,45 @@ stock Auth_OnDialogResponse(playerid, dialogid, response, const inputtext[])
             return 1;
         }
 
-        format(
-            AuthPendingPassword[playerid],
-            sizeof AuthPendingPassword[],
-            "%s",
-            inputtext
-        );
+        new sep = strfind(stored, "$");
 
-        AuthVerifyRequest[playerid] = Crypto_Argon2Verify(
-            inputtext,
-            password_hash,
-            "Auth_OnPasswordVerified"
-        );
-
-        if (AuthVerifyRequest[playerid] <= 0)
+        if (sep != AUTH_SALT_LEN)
         {
-            AuthVerifyRequest[playerid] = 0;
-            AuthPendingPassword[playerid][0] = EOS;
-
-            SendClientMessage(playerid, 0xFF0000FF, "Gagal memulai verifikasi password.");
-            Auth_ShowLogin(playerid);
+            SendClientMessage(playerid, 0xFF0000FF, "Data akun tidak valid. Hubungi admin.");
+            Kick(playerid);
             return 1;
         }
 
-        SendClientMessage(playerid, 0xFFFFFFFF, "Password sedang diverifikasi...");
+        new salt[AUTH_SALT_LEN + 1];
+        new hash[65];
+        new check[65];
+
+        strmid(salt, stored, 0, sep, sizeof salt);
+        strmid(hash, stored, sep + 1, strlen(stored), sizeof hash);
+        SHA256_PassHash(inputtext, salt, check, sizeof check);
+
+        if (!strcmp(check, hash))
+        {
+            PlayerData[playerid][Player_LoggedIn] = 1;
+            AuthLoginAttempts[playerid] = 0;
+
+            SendClientMessage(playerid, 0x00FF00FF, "Login berhasil!");
+            SendClientMessage(playerid, 0xFFFFFFFF, "Selamat bermain di HopeCity Roleplay.");
+
+            SetSpawnInfo(playerid, 0, 0, 1481.0, -1771.0, 18.8, 90.0, 0, 0, 0, 0, 0, 0);
+            SpawnPlayer(playerid);
+            return 1;
+        }
+
+        if (++AuthLoginAttempts[playerid] >= AUTH_MAX_ATTEMPTS)
+        {
+            SendClientMessage(playerid, 0xFF0000FF, "Terlalu banyak percobaan. Kamu di-kick.");
+            Kick(playerid);
+            return 1;
+        }
+
+        SendClientMessage(playerid, 0xFF0000FF, "Password salah.");
+        Auth_ShowLogin(playerid);
         return 1;
     }
 
