@@ -9,6 +9,7 @@
 #include "modules/database.pwn"
 #include "modules/auth.pwn"
 #include "command/admin.inc"
+#include "command/admin_extra.inc"
 
 main()
 {
@@ -40,6 +41,7 @@ public OnGameModeInit()
     Auth_Init();
     Admin_Init();
     Database_Init();
+    AdminX_Init();
     new autosaveFn[] = "Player_AutoSave";
     SetTimer(autosaveFn, 300000, true);
 
@@ -60,6 +62,7 @@ public OnPlayerConnect(playerid)
 {
     Player_OnConnect(playerid);
     Auth_OnConnect(playerid);
+    AdminX_OnConnect(playerid);
     Utils_SendWelcome(playerid);
     return 1;
 }
@@ -79,11 +82,13 @@ public OnPlayerSpawn(playerid)
 {
     Player_OnSpawn(playerid);
     Admin_OnSpawn(playerid);
+    AdminX_OnSpawn(playerid);
     return 1;
 }
 
 public OnPlayerDisconnect(playerid, reason)
 {
+    AdminX_OnDisconnect(playerid);
     Database_SavePlayer(playerid);
     Admin_OnDisconnect(playerid);
     Player_OnDisconnect(playerid, reason);
@@ -113,6 +118,11 @@ public OnPlayerCommandText(playerid, cmdtext[])
         return 1;
     }
 
+    if (AdminX_OnCommandText(playerid, cmdtext))
+    {
+        return 1;
+    }
+
     if (Admin_OnCommandText(playerid, cmdtext))
     {
         return 1;
@@ -125,4 +135,22 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 {
     #pragma unused listitem
     return Auth_OnDialogResponse(playerid, dialogid, response, inputtext);
+}
+
+public OnPlayerText(playerid, text[])
+{
+    #pragma unused text
+
+    if (!PlayerData[playerid][Player_LoggedIn])
+    {
+        SendClientMessage(playerid, 0xFF0000FF, "Login dulu sebelum chat.");
+        return 0;
+    }
+
+    if (!AdminX_OnText(playerid))
+    {
+        return 0;
+    }
+
+    return 1;
 }

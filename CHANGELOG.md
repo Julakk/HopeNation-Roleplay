@@ -66,3 +66,8 @@ Semua perubahan penting pada HopeCity Roleplay dicatat di sini.
 ## 2026-10-22 (lanjutan)
 - Fix loop reconnect setelah salah password 3x: akun dikunci sementara 120 detik per IP + nama, kick ditunda 1,5 detik supaya pesan terbaca.
 - Hapus warning compile (239) pada pemanggilan SetTimer/SetTimerEx.
+
+## 2026-10-22 (admin)
+- Sistem admin: command/admin.inc (duty, HUD, kick, freeze, set HP/armor/skin, give money, announce, setadmin).
+- command/admin_extra.inc: HUD panel /acmd, TP wajib duty (/gotoco /gotols /gotolv /gotosf /sendto), /spec, /mute, /warn, /slap, /spawn, /clearchat, /veh, /fixveh, /ban, /unban, /setweather, /settime, /players, /acheck.
+- Tabel baru hc_bans, kolom admin di hc_accounts.
