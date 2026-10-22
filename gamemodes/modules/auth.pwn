@@ -174,6 +174,9 @@ public Auth_OnPasswordVerified(requestid, status, const result[])
 
         SendClientMessage(playerid, 0x00FF00FF, "Login berhasil!");
         SendClientMessage(playerid, 0xFFFFFFFF, "Selamat bermain di HopeCity Roleplay.");
+
+        SetSpawnInfo(playerid, 0, 0, 1481.0, -1771.0, 18.8, 90.0, 0, 0, 0, 0, 0, 0);
+        SpawnPlayer(playerid);
     }
     else
     {

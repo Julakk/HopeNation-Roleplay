@@ -6,7 +6,7 @@ port 7777
 hostname HopeCity Roleplay | Development
 gamemode0 hopecity 1
 filterscripts
-plugins
+plugins async_crypto
 announce 0
 query 1
 weburl -

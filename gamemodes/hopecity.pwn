@@ -46,6 +46,17 @@ public OnPlayerConnect(playerid)
     return 1;
 }
 
+public OnPlayerRequestSpawn(playerid)
+{
+    if (!PlayerData[playerid][Player_LoggedIn])
+    {
+        SendClientMessage(playerid, 0xFF0000FF, "Login dulu sebelum spawn.");
+        return 0;
+    }
+
+    return 1;
+}
+
 public OnPlayerSpawn(playerid)
 {
     Player_OnSpawn(playerid);
@@ -67,6 +78,12 @@ public OnGameModeExit()
 
 public OnPlayerCommandText(playerid, cmdtext[])
 {
+    if (!PlayerData[playerid][Player_LoggedIn])
+    {
+        SendClientMessage(playerid, 0xFF0000FF, "Login dulu untuk memakai command.");
+        return 1;
+    }
+
     return Commands_OnText(playerid, cmdtext);
 }
 
