@@ -74,3 +74,7 @@ Semua perubahan penting pada HopeCity Roleplay dicatat di sini.
 
 ## 2026-10-22 (ahelp panel)
 - /acmd dihapus; /ahelp sekarang menampilkan panel HUD berhalaman (/ahelp [hal], /ahelp tutup), otomatis tertutup setelah 20 detik.
+
+## 2026-10-22 (ahelp center)
+- /ahelp tunggal: panel HUD di tengah layar, tombol X untuk menutup, tombol << >> untuk ganti halaman, tanpa auto close.
+- Hapus /ahelp versi chat dari admin.inc.

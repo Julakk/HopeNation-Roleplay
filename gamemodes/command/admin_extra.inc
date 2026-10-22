@@ -1081,14 +1081,12 @@ stock AdminX_CmdACheck(playerid, const cmdtext[], pos)
 
 
 // ---------------------- timer & hook ----------------------
-#define ADMINX_HELP_AUTOCLOSE 20000
-
 new PlayerText:AdminHelpBox[MAX_PLAYERS];
 new PlayerText:AdminHelpText[MAX_PLAYERS];
+new PlayerText:AdminHelpBtn[MAX_PLAYERS][3];
+new AdminHelpBtnOn[MAX_PLAYERS][3];
 new AdminHelpPage[MAX_PLAYERS];
-new AdminHelpTicket[MAX_PLAYERS];
-
-forward AdminX_HelpClose(playerid, ticket);
+new AdminHelpSelecting[MAX_PLAYERS];
 
 stock AdminX_HelpPages(level)
 {
@@ -1125,36 +1123,35 @@ stock AdminX_HelpBuild(page, total, level, text[], size)
         case 1:
         {
             strcat(text, "~y~Umum~n~~w~/aduty /a /ahelp /players /acheck~n~", size);
-            strcat(text, "~y~Teleport (wajib duty)~n~~w~/goto /gethere /gotoco~n~~w~/gotols /gotolv /gotosf~n~", size);
+            strcat(text, "~y~Teleport (wajib duty)~n~~w~/goto /gethere /gotoco~n~~w~/gotols /gotolv /gotosf", size);
         }
         case 2:
         {
-            strcat(text, "~y~Moderasi~n~~w~/kick /mute /unmute /warn~n~~w~/freeze /unfreeze~n~~w~/spec /specoff~n~", size);
+            strcat(text, "~y~Moderasi~n~~w~/kick /mute /unmute /warn~n~~w~/freeze /unfreeze~n~~w~/spec /specoff", size);
         }
         case 3:
         {
-            strcat(text, "~y~Level 2~n~~w~/sethp /setarmor /slap /spawn~n~~w~/sendto /announce /clearchat~n~~w~(/sendto wajib duty)~n~", size);
+            strcat(text, "~y~Level 2~n~~w~/sethp /setarmor /slap /spawn~n~~w~/sendto /announce /clearchat~n~~w~(/sendto wajib duty)", size);
         }
         case 4:
         {
-            strcat(text, "~y~Level 3~n~~w~/givemoney /setskin /veh /fixveh~n~~w~/ban /setweather /settime~n~", size);
+            strcat(text, "~y~Level 3~n~~w~/givemoney /setskin /veh /fixveh~n~~w~/ban /setweather /settime", size);
         }
         default:
         {
-            strcat(text, "~y~Level 4~n~~w~/unban~n~", size);
+            strcat(text, "~y~Level 4~n~~w~/unban", size);
 
             if (level >= 5)
             {
-                strcat(text, "~y~Level 5 / RCON~n~~w~/setadmin~n~", size);
+                strcat(text, "~n~~y~Level 5 / RCON~n~~w~/setadmin", size);
             }
         }
     }
 
-    strcat(text, "~g~/ahelp [hal] ganti | /ahelp tutup", size);
     return 1;
 }
 
-stock AdminX_HelpHide(playerid)
+stock AdminX_HelpHide(playerid, cancel = 1)
 {
     if (!AdminCmdHudOn[playerid])
     {
@@ -1163,19 +1160,43 @@ stock AdminX_HelpHide(playerid)
 
     PlayerTextDrawDestroy(playerid, AdminHelpText[playerid]);
     PlayerTextDrawDestroy(playerid, AdminHelpBox[playerid]);
+
+    for (new i = 0; i < 3; i++)
+    {
+        if (AdminHelpBtnOn[playerid][i])
+        {
+            PlayerTextDrawDestroy(playerid, AdminHelpBtn[playerid][i]);
+            AdminHelpBtnOn[playerid][i] = 0;
+        }
+    }
+
     AdminCmdHudOn[playerid] = 0;
+
+    if (cancel && AdminHelpSelecting[playerid])
+    {
+        AdminHelpSelecting[playerid] = 0;
+        CancelSelectTextDraw(playerid);
+    }
+
     return 1;
 }
 
-public AdminX_HelpClose(playerid, ticket)
+stock PlayerText:AdminX_MakeButton(playerid, Float:x, Float:y, const label[], color, Float:right)
 {
-    if (!IsPlayerConnected(playerid) || AdminHelpTicket[playerid] != ticket)
-    {
-        return 0;
-    }
+    new buffer[8];
 
-    AdminX_HelpHide(playerid);
-    return 1;
+    format(buffer, sizeof buffer, "%s", label);
+
+    new PlayerText:td = CreatePlayerTextDraw(playerid, x, y, buffer);
+    PlayerTextDrawLetterSize(playerid, td, 0.45, 1.5);
+    PlayerTextDrawTextSize(playerid, td, right, 14.0);
+    PlayerTextDrawFont(playerid, td, 1);
+    PlayerTextDrawColor(playerid, td, color);
+    PlayerTextDrawSetOutline(playerid, td, 1);
+    PlayerTextDrawSetProportional(playerid, td, 1);
+    PlayerTextDrawSetSelectable(playerid, td, 1);
+    PlayerTextDrawShow(playerid, td);
+    return td;
 }
 
 stock AdminX_HelpShow(playerid, page)
@@ -1183,27 +1204,40 @@ stock AdminX_HelpShow(playerid, page)
     new level = PlayerData[playerid][Player_Admin];
     new total = AdminX_HelpPages(level);
     new placeholder[] = "_";
-    new timerFn[] = "AdminX_HelpClose";
     new text[256];
 
     if (page < 1) page = 1;
     if (page > total) page = total;
 
-    AdminX_HelpHide(playerid);
+    if (!AdminCmdHudOn[playerid])
+    {
+        AdminHelpSelecting[playerid] = 0;
+    }
+
+    AdminX_HelpHide(playerid, 0);
+
+    AdminHelpBtnOn[playerid][0] = 0;
+    AdminHelpBtnOn[playerid][1] = 0;
+    AdminHelpBtnOn[playerid][2] = 0;
+
     AdminX_HelpBuild(page, total, level, text, sizeof text);
 
-    new Float:boxHeight = float(AdminX_HelpLines(text)) * 1.1 + 0.9;
+    // 1 unit tinggi = sekitar 10.4 piksel (layar virtual 640x480), panel diposisikan di tengah
+    new Float:textUnits = float(AdminX_HelpLines(text)) * 1.1;
+    new Float:boxUnits = textUnits + 0.9 + 1.5;
+    new Float:top = 240.0 - (boxUnits * 10.4) / 2.0;
+    new Float:buttonY = top + 4.0 + textUnits * 10.4 + 2.0;
 
     printf("[ADMINX] /ahelp: %s halaman %d/%d (%d karakter)", PlayerData[playerid][Player_Name], page, total, strlen(text));
 
-    AdminHelpBox[playerid] = CreatePlayerTextDraw(playerid, 28.0, 90.0, placeholder);
-    PlayerTextDrawLetterSize(playerid, AdminHelpBox[playerid], 0.0, boxHeight);
-    PlayerTextDrawTextSize(playerid, AdminHelpBox[playerid], 215.0, 0.0);
+    AdminHelpBox[playerid] = CreatePlayerTextDraw(playerid, 210.0, top, placeholder);
+    PlayerTextDrawLetterSize(playerid, AdminHelpBox[playerid], 0.0, boxUnits);
+    PlayerTextDrawTextSize(playerid, AdminHelpBox[playerid], 430.0, 0.0);
     PlayerTextDrawUseBox(playerid, AdminHelpBox[playerid], 1);
-    PlayerTextDrawBoxColor(playerid, AdminHelpBox[playerid], 0x000000AA);
+    PlayerTextDrawBoxColor(playerid, AdminHelpBox[playerid], 0x000000CC);
     PlayerTextDrawShow(playerid, AdminHelpBox[playerid]);
 
-    AdminHelpText[playerid] = CreatePlayerTextDraw(playerid, 34.0, 95.0, text);
+    AdminHelpText[playerid] = CreatePlayerTextDraw(playerid, 218.0, top + 4.0, text);
     PlayerTextDrawLetterSize(playerid, AdminHelpText[playerid], 0.25, 1.1);
     PlayerTextDrawFont(playerid, AdminHelpText[playerid], 1);
     PlayerTextDrawColor(playerid, AdminHelpText[playerid], -1);
@@ -1211,12 +1245,33 @@ stock AdminX_HelpShow(playerid, page)
     PlayerTextDrawSetProportional(playerid, AdminHelpText[playerid], 1);
     PlayerTextDrawShow(playerid, AdminHelpText[playerid]);
 
+    // tombol X (tutup)
+    AdminHelpBtn[playerid][0] = AdminX_MakeButton(playerid, 410.0, top + 2.0, "X", 0xFF3333FF, 428.0);
+    AdminHelpBtnOn[playerid][0] = 1;
+
+    // tombol halaman sebelumnya
+    if (page > 1)
+    {
+        AdminHelpBtn[playerid][1] = AdminX_MakeButton(playerid, 218.0, buttonY, "<<", 0x33FF33FF, 246.0);
+        AdminHelpBtnOn[playerid][1] = 1;
+    }
+
+    // tombol halaman berikutnya
+    if (page < total)
+    {
+        AdminHelpBtn[playerid][2] = AdminX_MakeButton(playerid, 398.0, buttonY, ">>", 0x33FF33FF, 426.0);
+        AdminHelpBtnOn[playerid][2] = 1;
+    }
+
     AdminCmdHudOn[playerid] = 1;
     AdminHelpPage[playerid] = page;
-    AdminHelpTicket[playerid]++;
-    SetTimerEx(timerFn, ADMINX_HELP_AUTOCLOSE, false, "dd", playerid, AdminHelpTicket[playerid]);
 
-    printf("[ADMINX] /ahelp: panel tampil untuk %s", PlayerData[playerid][Player_Name]);
+    if (!AdminHelpSelecting[playerid])
+    {
+        AdminHelpSelecting[playerid] = 1;
+        SelectTextDraw(playerid, 0xFF4040FF);
+    }
+
     return 1;
 }
 
@@ -1239,14 +1294,65 @@ stock AdminX_CmdHelp(playerid, const cmdtext[], pos)
 
     if (AdminCmdHudOn[playerid])
     {
-        AdminHelpTicket[playerid]++;
-        AdminX_HelpHide(playerid);
+        AdminX_HelpHide(playerid, 1);
         return 1;
     }
 
     AdminX_HelpShow(playerid, 1);
     return 1;
 }
+
+// pemain menekan ESC / back saat mode kursor aktif
+stock AdminX_OnClickTextDraw(playerid, Text:clickedid)
+{
+    if (clickedid == Text:INVALID_TEXT_DRAW && AdminCmdHudOn[playerid])
+    {
+        AdminHelpSelecting[playerid] = 0;
+        AdminX_HelpHide(playerid, 0);
+        return 1;
+    }
+
+    return 0;
+}
+
+// pemain menekan tombol X / << / >>
+stock AdminX_OnClickPlayerTextDraw(playerid, PlayerText:playertextid)
+{
+    if (!AdminCmdHudOn[playerid])
+    {
+        return 0;
+    }
+
+    if (AdminHelpBtnOn[playerid][0] && playertextid == AdminHelpBtn[playerid][0])
+    {
+        AdminX_HelpHide(playerid, 1);
+        return 1;
+    }
+
+    if (AdminHelpBtnOn[playerid][1] && playertextid == AdminHelpBtn[playerid][1])
+    {
+        AdminX_HelpShow(playerid, AdminHelpPage[playerid] - 1);
+        return 1;
+    }
+
+    if (AdminHelpBtnOn[playerid][2] && playertextid == AdminHelpBtn[playerid][2])
+    {
+        AdminX_HelpShow(playerid, AdminHelpPage[playerid] + 1);
+        return 1;
+    }
+
+    return 0;
+}
+
+
+
+
+
+
+
+
+
+
 
 
 

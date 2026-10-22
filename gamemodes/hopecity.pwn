@@ -154,3 +154,13 @@ public OnPlayerText(playerid, text[])
 
     return 1;
 }
+
+public OnPlayerClickTextDraw(playerid, Text:clickedid)
+{
+    return AdminX_OnClickTextDraw(playerid, clickedid);
+}
+
+public OnPlayerClickPlayerTextDraw(playerid, PlayerText:playertextid)
+{
+    return AdminX_OnClickPlayerTextDraw(playerid, playertextid);
+}

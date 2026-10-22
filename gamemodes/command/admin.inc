@@ -310,31 +310,6 @@ stock Admin_SaveLevel(playerid)
 }
 
 // ---------------------- command ----------------------
-stock Admin_CmdHelp(playerid)
-{
-    new level = PlayerData[playerid][Player_Admin];
-
-    SendClientMessage(playerid, ADMIN_COLOR_INFO, "===== ADMIN COMMANDS =====");
-    SendClientMessage(playerid, -1, "Lv1: /aduty /a /goto /gethere /freeze /unfreeze /kick");
-
-    if (level >= 2)
-    {
-        SendClientMessage(playerid, -1, "Lv2: /sethp /setarmor /announce");
-    }
-
-    if (level >= 3)
-    {
-        SendClientMessage(playerid, -1, "Lv3: /givemoney /setskin");
-    }
-
-    if (level >= ADMIN_MAX_LEVEL || IsPlayerAdmin(playerid))
-    {
-        SendClientMessage(playerid, -1, "Lv5/RCON: /setadmin [id] [0-5]");
-    }
-
-    SendClientMessage(playerid, ADMIN_COLOR_INFO, "Selain /ahelp, /aduty, /a: butuh duty aktif.");
-    return 1;
-}
 
 stock Admin_CmdDuty(playerid)
 {
@@ -788,7 +763,6 @@ stock Admin_OnCommandText(playerid, const cmdtext[])
 
     Admin_Token(cmdtext, pos, cmd);
 
-    if (!strcmp(cmd, "ahelp", true)) return Admin_CmdHelp(playerid);
     if (!strcmp(cmd, "aduty", true)) return Admin_CmdDuty(playerid);
     if (!strcmp(cmd, "a", true)) return Admin_CmdChat(playerid, cmdtext, pos);
     if (!strcmp(cmd, "goto", true)) return Admin_CmdGoto(playerid, cmdtext, pos, false);
