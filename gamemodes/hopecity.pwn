@@ -92,7 +92,7 @@ public OnGameModeExit()
     {
         if (IsPlayerConnected(i))
         {
-            Database_SavePlayer(i);
+            Database_SavePlayer(i, 1);
         }
     }
 

@@ -7,6 +7,9 @@
 
 new MySQL:HopeCityDB;
 
+forward OnAccountLogin(playerid, session, password[]);
+forward OnAccountRegister(playerid, session);
+
 stock Database_Exec(const query[])
 {
     if (HopeCityDB == MySQL:0)
@@ -16,6 +19,57 @@ stock Database_Exec(const query[])
 
     mysql_query(HopeCityDB, query, false);
     return (mysql_errno(HopeCityDB) == 0);
+}
+
+stock Database_ColumnExists(const table[], const column[])
+{
+    if (HopeCityDB == MySQL:0)
+    {
+        return 0;
+    }
+
+    new query[256];
+    mysql_format(
+        HopeCityDB,
+        query,
+        sizeof query,
+        "SELECT COUNT(*) AS c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '%e' AND COLUMN_NAME = '%e'",
+        table,
+        column
+    );
+
+    new Cache:result = mysql_query(HopeCityDB, query);
+
+    if (result == Cache:0)
+    {
+        return 0;
+    }
+
+    new count = 0;
+    cache_get_value_name_int(0, "c", count);
+    cache_delete(result);
+
+    return (count > 0);
+}
+
+stock Database_EnsureColumn(const table[], const column[], const definition[])
+{
+    if (Database_ColumnExists(table, column))
+    {
+        return 1;
+    }
+
+    new query[256];
+    format(query, sizeof query, "ALTER TABLE %s ADD COLUMN %s %s", table, column, definition);
+
+    if (!Database_Exec(query))
+    {
+        printf("[DATABASE] Gagal menambah kolom %s.%s", table, column);
+        return 0;
+    }
+
+    printf("[DATABASE] Kolom %s.%s ditambahkan.", table, column);
+    return 1;
 }
 
 stock Database_Init()
@@ -31,7 +85,7 @@ stock Database_Init()
 
     print("[DATABASE] MySQL connected.");
 
-    new query[1024];
+    new query[1280];
     query[0] = EOS;
 
     strcat(query, "CREATE TABLE IF NOT EXISTS hc_accounts (", sizeof query);
@@ -47,6 +101,8 @@ stock Database_Init()
     strcat(query, "pos_y FLOAT NOT NULL DEFAULT -1771, ", sizeof query);
     strcat(query, "pos_z FLOAT NOT NULL DEFAULT 18.8, ", sizeof query);
     strcat(query, "angle FLOAT NOT NULL DEFAULT 90, ", sizeof query);
+    strcat(query, "last_login DATETIME NULL DEFAULT NULL, ", sizeof query);
+    strcat(query, "last_ip VARCHAR(16) NULL DEFAULT NULL, ", sizeof query);
     strcat(query, "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, ", sizeof query);
     strcat(query, "PRIMARY KEY (id), UNIQUE KEY uq_hc_name (name)", sizeof query);
     strcat(query, ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4", sizeof query);
@@ -56,6 +112,10 @@ stock Database_Init()
         print("[DATABASE] Gagal membuat tabel hc_accounts.");
         return 0;
     }
+
+    // migrasi untuk tabel lama (aman dijalankan berulang)
+    Database_EnsureColumn("hc_accounts", "last_login", "DATETIME NULL DEFAULT NULL");
+    Database_EnsureColumn("hc_accounts", "last_ip", "VARCHAR(16) NULL DEFAULT NULL");
 
     print("[DATABASE] Accounts table ready.");
     return 1;
@@ -91,126 +151,71 @@ stock Database_AccountExists(const name[])
     return (rows > 0);
 }
 
-stock Database_GetPasswordHash(const name[], output[], output_size)
+// ---------- async: login ----------
+stock Database_LoginQuery(playerid, session, password[])
 {
     if (HopeCityDB == MySQL:0)
     {
         return 0;
     }
 
-    new query[160];
+    new query[384];
     mysql_format(
         HopeCityDB,
         query,
         sizeof query,
-        "SELECT password_hash FROM hc_accounts WHERE name = '%e' LIMIT 1",
-        name
-    );
-
-    new Cache:result = mysql_query(HopeCityDB, query);
-
-    if (result == Cache:0)
-    {
-        return 0;
-    }
-
-    new rows;
-    cache_get_row_count(rows);
-
-    if (rows <= 0)
-    {
-        cache_delete(result);
-        return 0;
-    }
-
-    cache_get_value_name(0, "password_hash", output, output_size);
-    cache_delete(result);
-
-    return 1;
-}
-
-stock Database_SaveAccount(const name[], const password_hash[])
-{
-    if (HopeCityDB == MySQL:0)
-    {
-        return 0;
-    }
-
-    new query[256];
-    mysql_format(
-        HopeCityDB,
-        query,
-        sizeof query,
-        "INSERT INTO hc_accounts (name, password_hash) VALUES ('%e', '%e')",
-        name,
-        password_hash
-    );
-
-    return Database_Exec(query);
-}
-
-stock Database_LoadPlayer(playerid)
-{
-    Player_SetDefaults(playerid);
-
-    if (HopeCityDB == MySQL:0)
-    {
-        return 0;
-    }
-
-    new query[256];
-    mysql_format(
-        HopeCityDB,
-        query,
-        sizeof query,
-        "SELECT money, skin, interior, health, armor, pos_x, pos_y, pos_z, angle FROM hc_accounts WHERE name = '%e' LIMIT 1",
+        "SELECT id, password_hash, money, skin, interior, health, armor, pos_x, pos_y, pos_z, angle FROM hc_accounts WHERE name = '%e' LIMIT 1",
         PlayerData[playerid][Player_Name]
     );
 
-    new Cache:result = mysql_query(HopeCityDB, query);
+    mysql_tquery(HopeCityDB, query, "OnAccountLogin", "dds", playerid, session, password);
+    return 1;
+}
 
-    if (result == Cache:0)
-    {
-        return 0;
-    }
+// dipanggil DI DALAM callback OnAccountLogin (cache aktif)
+stock Database_ReadHash(output[], output_size)
+{
+    cache_get_value_name(0, "password_hash", output, output_size);
+    return 1;
+}
 
-    new rows;
-    cache_get_row_count(rows);
+// dipanggil DI DALAM callback OnAccountLogin setelah password cocok
+stock Database_ReadPlayerRow(playerid)
+{
+    Player_SetDefaults(playerid);
 
-    if (rows > 0)
-    {
-        new value;
-        new Float:fvalue;
+    new value;
+    new Float:fvalue;
 
-        cache_get_value_name_int(0, "money", value);
-        PlayerData[playerid][Player_Money] = value;
+    cache_get_value_name_int(0, "id", value);
+    PlayerData[playerid][Player_ID] = value;
 
-        cache_get_value_name_int(0, "skin", value);
-        PlayerData[playerid][Player_Skin] = value;
+    cache_get_value_name_int(0, "money", value);
+    PlayerData[playerid][Player_Money] = value;
 
-        cache_get_value_name_int(0, "interior", value);
-        PlayerData[playerid][Player_Interior] = value;
+    cache_get_value_name_int(0, "skin", value);
+    PlayerData[playerid][Player_Skin] = value;
 
-        cache_get_value_name_float(0, "health", fvalue);
-        PlayerData[playerid][Player_Health] = fvalue;
+    cache_get_value_name_int(0, "interior", value);
+    PlayerData[playerid][Player_Interior] = value;
 
-        cache_get_value_name_float(0, "armor", fvalue);
-        PlayerData[playerid][Player_Armor] = fvalue;
+    cache_get_value_name_float(0, "health", fvalue);
+    PlayerData[playerid][Player_Health] = fvalue;
 
-        cache_get_value_name_float(0, "pos_x", fvalue);
-        PlayerData[playerid][Player_PosX] = fvalue;
+    cache_get_value_name_float(0, "armor", fvalue);
+    PlayerData[playerid][Player_Armor] = fvalue;
 
-        cache_get_value_name_float(0, "pos_y", fvalue);
-        PlayerData[playerid][Player_PosY] = fvalue;
+    cache_get_value_name_float(0, "pos_x", fvalue);
+    PlayerData[playerid][Player_PosX] = fvalue;
 
-        cache_get_value_name_float(0, "pos_z", fvalue);
-        PlayerData[playerid][Player_PosZ] = fvalue;
+    cache_get_value_name_float(0, "pos_y", fvalue);
+    PlayerData[playerid][Player_PosY] = fvalue;
 
-        cache_get_value_name_float(0, "angle", fvalue);
-        PlayerData[playerid][Player_Angle] = fvalue;
-    }
+    cache_get_value_name_float(0, "pos_z", fvalue);
+    PlayerData[playerid][Player_PosZ] = fvalue;
 
-    cache_delete(result);
+    cache_get_value_name_float(0, "angle", fvalue);
+    PlayerData[playerid][Player_Angle] = fvalue;
 
     if (PlayerData[playerid][Player_Health] < 1.0)
     {
@@ -220,14 +225,64 @@ stock Database_LoadPlayer(playerid)
     return 1;
 }
 
-stock Database_SavePlayer(playerid)
+stock Database_TouchLogin(playerid)
+{
+    if (HopeCityDB == MySQL:0 || PlayerData[playerid][Player_ID] <= 0)
+    {
+        return 0;
+    }
+
+    new ip[16], query[192];
+    GetPlayerIp(playerid, ip, sizeof ip);
+
+    mysql_format(
+        HopeCityDB,
+        query,
+        sizeof query,
+        "UPDATE hc_accounts SET last_login = NOW(), last_ip = '%e' WHERE id = %d",
+        ip,
+        PlayerData[playerid][Player_ID]
+    );
+
+    mysql_tquery(HopeCityDB, query);
+    return 1;
+}
+
+// ---------- async: register ----------
+stock Database_RegisterQuery(playerid, session, const password_hash[])
 {
     if (HopeCityDB == MySQL:0)
     {
         return 0;
     }
 
-    if (!PlayerData[playerid][Player_LoggedIn] || !PlayerData[playerid][Player_Spawned])
+    new ip[16], query[320];
+    GetPlayerIp(playerid, ip, sizeof ip);
+
+    mysql_format(
+        HopeCityDB,
+        query,
+        sizeof query,
+        "INSERT INTO hc_accounts (name, password_hash, last_ip) VALUES ('%e', '%e', '%e')",
+        PlayerData[playerid][Player_Name],
+        password_hash,
+        ip
+    );
+
+    mysql_tquery(HopeCityDB, query, "OnAccountRegister", "dd", playerid, session);
+    return 1;
+}
+
+// ---------- save ----------
+// sync = 1 dipakai saat server mati supaya data pasti tertulis sebelum koneksi ditutup
+stock Database_SavePlayer(playerid, sync = 0)
+{
+    if (HopeCityDB == MySQL:0)
+    {
+        return 0;
+    }
+
+    if (!PlayerData[playerid][Player_LoggedIn] || !PlayerData[playerid][Player_Spawned] || PlayerData[playerid][Player_ID] <= 0)
     {
         return 0;
     }
@@ -244,7 +299,7 @@ stock Database_SavePlayer(playerid)
         HopeCityDB,
         query,
         sizeof query,
-        "UPDATE hc_accounts SET money = %d, skin = %d, interior = %d, health = %.1f, armor = %.1f, pos_x = %.3f, pos_y = %.3f, pos_z = %.3f, angle = %.1f WHERE name = '%e'",
+        "UPDATE hc_accounts SET money = %d, skin = %d, interior = %d, health = %.1f, armor = %.1f, pos_x = %.3f, pos_y = %.3f, pos_z = %.3f, angle = %.1f WHERE id = %d",
         GetPlayerMoney(playerid),
         GetPlayerSkin(playerid),
         GetPlayerInterior(playerid),
@@ -254,8 +309,13 @@ stock Database_SavePlayer(playerid)
         y,
         z,
         angle,
-        PlayerData[playerid][Player_Name]
+        PlayerData[playerid][Player_ID]
     );
+
+    if (sync)
+    {
+        return Database_Exec(query);
+    }
 
     mysql_tquery(HopeCityDB, query);
     return 1;

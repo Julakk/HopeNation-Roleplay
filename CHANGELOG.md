@@ -55,3 +55,10 @@ Semua perubahan penting pada HopeCity Roleplay dicatat di sini.
 ### Keamanan
 - `server.cfg` dikeluarkan dari tracking dan diganti `server.cfg.example`.
 - `.gitignore` untuk file hasil build (`*.amx`, `*.bak`, `scriptfiles/`, `*.db`).
+
+## 2026-10-22
+- Login/register dan load data pemain diubah ke async (`mysql_tquery`), server tidak nge-block saat query.
+- Tambah `Player_ID`, save/update sekarang pakai `WHERE id`.
+- Tambah kolom `last_login` dan `last_ip` (migrasi otomatis untuk tabel lama).
+- Dialog auth diberi delay 0.8 detik agar pasti muncul; ada guard double-klik dan session check saat disconnect.
+- Save saat server mati dibuat sync supaya data tidak hilang sebelum koneksi ditutup.
