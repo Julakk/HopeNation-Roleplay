@@ -62,3 +62,7 @@ Semua perubahan penting pada HopeCity Roleplay dicatat di sini.
 - Tambah kolom `last_login` dan `last_ip` (migrasi otomatis untuk tabel lama).
 - Dialog auth diberi delay 0.8 detik agar pasti muncul; ada guard double-klik dan session check saat disconnect.
 - Save saat server mati dibuat sync supaya data tidak hilang sebelum koneksi ditutup.
+
+## 2026-10-22 (lanjutan)
+- Fix loop reconnect setelah salah password 3x: akun dikunci sementara 120 detik per IP + nama, kick ditunda 1,5 detik supaya pesan terbaca.
+- Hapus warning compile (239) pada pemanggilan SetTimer/SetTimerEx.

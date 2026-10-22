@@ -38,7 +38,8 @@ public OnGameModeInit()
     Commands_Init();
     Auth_Init();
     Database_Init();
-    SetTimer("Player_AutoSave", 300000, true);
+    new autosaveFn[] = "Player_AutoSave";
+    SetTimer(autosaveFn, 300000, true);
 
     AddPlayerClass(
         0,

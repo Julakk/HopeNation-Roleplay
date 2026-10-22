@@ -12,11 +12,28 @@
 #define AUTH_MIN_PASSWORD 6
 #define AUTH_MAX_PASSWORD 32
 
+#define AUTH_LOCK_SECONDS 120
+#define AUTH_LOCK_SLOTS 64
+#define AUTH_KICK_DELAY 1500
+
 new AuthLoginAttempts[MAX_PLAYERS];
 new AuthSession[MAX_PLAYERS];
 new AuthBusy[MAX_PLAYERS];
 
+new AuthLockIP[AUTH_LOCK_SLOTS][16];
+new AuthLockName[AUTH_LOCK_SLOTS][MAX_PLAYER_NAME + 1];
+new AuthLockUntil[AUTH_LOCK_SLOTS];
+new AuthLockNext;
+
 forward Auth_ShowWelcome(playerid, session);
+forward Auth_KickPlayer(playerid, session);
+
+stock Auth_StartTimer(const func[], delay, playerid, session)
+{
+    new name[32];
+    format(name, sizeof name, "%s", func);
+    return SetTimerEx(name, delay, false, "dd", playerid, session);
+}
 
 stock Auth_Init()
 {
@@ -45,6 +62,77 @@ stock Auth_MakeSalt(salt[])
     return 1;
 }
 
+// ---------- lock sementara setelah salah password ----------
+stock Auth_LockRemaining(playerid)
+{
+    new ip[16];
+    new now = gettime();
+
+    GetPlayerIp(playerid, ip, sizeof ip);
+
+    for (new i = 0; i < AUTH_LOCK_SLOTS; i++)
+    {
+        if (AuthLockUntil[i] <= now)
+        {
+            continue;
+        }
+
+        if (!strcmp(AuthLockIP[i], ip) && !strcmp(AuthLockName[i], PlayerData[playerid][Player_Name], true))
+        {
+            return AuthLockUntil[i] - now;
+        }
+    }
+
+    return 0;
+}
+
+stock Auth_LockPlayer(playerid)
+{
+    new ip[16];
+    new now = gettime();
+    new slot = -1;
+
+    GetPlayerIp(playerid, ip, sizeof ip);
+
+    for (new i = 0; i < AUTH_LOCK_SLOTS; i++)
+    {
+        if (AuthLockUntil[i] <= now)
+        {
+            slot = i;
+            break;
+        }
+
+        if (!strcmp(AuthLockIP[i], ip) && !strcmp(AuthLockName[i], PlayerData[playerid][Player_Name], true))
+        {
+            slot = i;
+            break;
+        }
+    }
+
+    if (slot == -1)
+    {
+        slot = AuthLockNext;
+        AuthLockNext = (AuthLockNext + 1) % AUTH_LOCK_SLOTS;
+    }
+
+    format(AuthLockIP[slot], 16, "%s", ip);
+    format(AuthLockName[slot], MAX_PLAYER_NAME + 1, "%s", PlayerData[playerid][Player_Name]);
+    AuthLockUntil[slot] = now + AUTH_LOCK_SECONDS;
+    return 1;
+}
+
+public Auth_KickPlayer(playerid, session)
+{
+    if (!IsPlayerConnected(playerid) || AuthSession[playerid] != session)
+    {
+        return 0;
+    }
+
+    Kick(playerid);
+    return 1;
+}
+
+// ---------- dialog ----------
 stock Auth_ShowRegister(playerid)
 {
     ShowPlayerDialog(
@@ -100,8 +188,21 @@ stock Auth_OnConnect(playerid)
     PlayerData[playerid][Player_LoggedIn] = 0;
     Auth_ResetPlayer(playerid);
 
+    new remaining = Auth_LockRemaining(playerid);
+
+    if (remaining > 0)
+    {
+        new msg[144];
+        format(msg, sizeof msg, "Akun ini dikunci sementara karena terlalu banyak salah password. Coba lagi dalam %d detik.", remaining);
+        SendClientMessage(playerid, 0xFF0000FF, msg);
+
+        AuthBusy[playerid] = 1;
+        Auth_StartTimer("Auth_KickPlayer", AUTH_KICK_DELAY, playerid, AuthSession[playerid]);
+        return 1;
+    }
+
     // delay sedikit supaya dialog pasti muncul di client
-    SetTimerEx("Auth_ShowWelcome", 800, false, "dd", playerid, AuthSession[playerid]);
+    Auth_StartTimer("Auth_ShowWelcome", 800, playerid, AuthSession[playerid]);
     return 1;
 }
 
@@ -162,7 +263,8 @@ public OnAccountLogin(playerid, session, password[])
     if (sep != AUTH_SALT_LEN)
     {
         SendClientMessage(playerid, 0xFF0000FF, "Data akun tidak valid. Hubungi admin.");
-        Kick(playerid);
+        AuthBusy[playerid] = 1;
+        Auth_StartTimer("Auth_KickPlayer", AUTH_KICK_DELAY, playerid, AuthSession[playerid]);
         return 1;
     }
 
@@ -202,8 +304,14 @@ public OnAccountLogin(playerid, session, password[])
 
     if (++AuthLoginAttempts[playerid] >= AUTH_MAX_ATTEMPTS)
     {
-        SendClientMessage(playerid, 0xFF0000FF, "Terlalu banyak percobaan. Kamu di-kick.");
-        Kick(playerid);
+        Auth_LockPlayer(playerid);
+
+        new msg[144];
+        format(msg, sizeof msg, "Terlalu banyak percobaan. Kamu di-kick dan akun dikunci %d detik.", AUTH_LOCK_SECONDS);
+        SendClientMessage(playerid, 0xFF0000FF, msg);
+
+        AuthBusy[playerid] = 1;
+        Auth_StartTimer("Auth_KickPlayer", AUTH_KICK_DELAY, playerid, AuthSession[playerid]);
         return 1;
     }
 
@@ -212,11 +320,16 @@ public OnAccountLogin(playerid, session, password[])
     return 1;
 }
 
-// ---------- dialog ----------
+// ---------- dialog response ----------
 stock Auth_OnDialogResponse(playerid, dialogid, response, inputtext[])
 {
     if (dialogid == DIALOG_AUTH)
     {
+        if (AuthBusy[playerid])
+        {
+            return 1;
+        }
+
         if (response)
         {
             Auth_ShowLogin(playerid);
