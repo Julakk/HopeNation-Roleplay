@@ -1,0 +1,6 @@
+hostname = 127.0.0.1
+username = GANTI_USERNAME
+password = GANTI_PASSWORD
+database = GANTI_NAMA_DATABASE
+server_port = 3306
+auto_reconnect = true
