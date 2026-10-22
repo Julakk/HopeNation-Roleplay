@@ -3,121 +3,214 @@
 #endif
 #define _HOPECITY_DATABASE
 
-#include <a_sampdb>
+#include <a_mysql>
 
-new DB:HopeCityDB;
+new MySQL:HopeCityDB;
 
 stock Database_Exec(const query[])
 {
-    if (HopeCityDB == DB:0)
+    if (HopeCityDB == MySQL:0)
     {
         return 0;
     }
 
-    new DBResult:result = db_query(HopeCityDB, query);
+    mysql_query(HopeCityDB, query, false);
+    return (mysql_errno(HopeCityDB) == 0);
+}
 
-    if (!result)
+stock Database_Init()
+{
+    HopeCityDB = mysql_connect_file();
+
+    if (HopeCityDB == MySQL:0 || mysql_errno(HopeCityDB) != 0)
     {
+        print("[DATABASE] Gagal konek MySQL. Cek mysql.ini, plugin mysql, dan log-core.");
+        HopeCityDB = MySQL:0;
         return 0;
     }
 
-    db_free_result(result);
+    print("[DATABASE] MySQL connected.");
+
+    new query[1024];
+    query[0] = EOS;
+
+    strcat(query, "CREATE TABLE IF NOT EXISTS hc_accounts (", sizeof query);
+    strcat(query, "id INT UNSIGNED NOT NULL AUTO_INCREMENT, ", sizeof query);
+    strcat(query, "name VARCHAR(24) NOT NULL, ", sizeof query);
+    strcat(query, "password_hash VARCHAR(96) NOT NULL, ", sizeof query);
+    strcat(query, "money INT NOT NULL DEFAULT 500, ", sizeof query);
+    strcat(query, "skin SMALLINT NOT NULL DEFAULT 0, ", sizeof query);
+    strcat(query, "interior SMALLINT NOT NULL DEFAULT 0, ", sizeof query);
+    strcat(query, "health FLOAT NOT NULL DEFAULT 100, ", sizeof query);
+    strcat(query, "armor FLOAT NOT NULL DEFAULT 0, ", sizeof query);
+    strcat(query, "pos_x FLOAT NOT NULL DEFAULT 1481, ", sizeof query);
+    strcat(query, "pos_y FLOAT NOT NULL DEFAULT -1771, ", sizeof query);
+    strcat(query, "pos_z FLOAT NOT NULL DEFAULT 18.8, ", sizeof query);
+    strcat(query, "angle FLOAT NOT NULL DEFAULT 90, ", sizeof query);
+    strcat(query, "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, ", sizeof query);
+    strcat(query, "PRIMARY KEY (id), UNIQUE KEY uq_hc_name (name)", sizeof query);
+    strcat(query, ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4", sizeof query);
+
+    if (!Database_Exec(query))
+    {
+        print("[DATABASE] Gagal membuat tabel hc_accounts.");
+        return 0;
+    }
+
+    print("[DATABASE] Accounts table ready.");
     return 1;
 }
 
-stock Database_ColumnExists(const table[], const column[])
+stock Database_AccountExists(const name[])
 {
-    new query[96];
-    new name[32];
-    new found = 0;
-
-    format(query, sizeof query, "PRAGMA table_info(%s)", table);
-
-    new DBResult:result = db_query(HopeCityDB, query);
-
-    if (!result)
+    if (HopeCityDB == MySQL:0)
     {
         return 0;
     }
 
-    if (db_num_rows(result) > 0)
-    {
-        do
-        {
-            db_get_field(result, 1, name, sizeof name);
+    new query[160];
+    mysql_format(
+        HopeCityDB,
+        query,
+        sizeof query,
+        "SELECT id FROM hc_accounts WHERE name = '%e' LIMIT 1",
+        name
+    );
 
-            if (!strcmp(name, column))
-            {
-                found = 1;
-                break;
-            }
-        }
-        while (db_next_row(result));
+    new Cache:result = mysql_query(HopeCityDB, query);
+
+    if (result == Cache:0)
+    {
+        return 0;
     }
 
-    db_free_result(result);
-    return found;
+    new rows;
+    cache_get_row_count(rows);
+    cache_delete(result);
+
+    return (rows > 0);
 }
 
-stock Database_Migrate()
+stock Database_GetPasswordHash(const name[], output[], output_size)
 {
-    if (Database_ColumnExists("accounts", "money"))
+    if (HopeCityDB == MySQL:0)
     {
-        return 1;
+        return 0;
     }
 
-    Database_Exec("ALTER TABLE accounts ADD COLUMN money INTEGER NOT NULL DEFAULT 500");
-    Database_Exec("ALTER TABLE accounts ADD COLUMN skin INTEGER NOT NULL DEFAULT 0");
-    Database_Exec("ALTER TABLE accounts ADD COLUMN interior INTEGER NOT NULL DEFAULT 0");
-    Database_Exec("ALTER TABLE accounts ADD COLUMN health REAL NOT NULL DEFAULT 100.0");
-    Database_Exec("ALTER TABLE accounts ADD COLUMN armor REAL NOT NULL DEFAULT 0.0");
-    Database_Exec("ALTER TABLE accounts ADD COLUMN pos_x REAL NOT NULL DEFAULT 1481.0");
-    Database_Exec("ALTER TABLE accounts ADD COLUMN pos_y REAL NOT NULL DEFAULT -1771.0");
-    Database_Exec("ALTER TABLE accounts ADD COLUMN pos_z REAL NOT NULL DEFAULT 18.8");
-    Database_Exec("ALTER TABLE accounts ADD COLUMN angle REAL NOT NULL DEFAULT 90.0");
+    new query[160];
+    mysql_format(
+        HopeCityDB,
+        query,
+        sizeof query,
+        "SELECT password_hash FROM hc_accounts WHERE name = '%e' LIMIT 1",
+        name
+    );
 
-    print("[DATABASE] Player data columns added.");
+    new Cache:result = mysql_query(HopeCityDB, query);
+
+    if (result == Cache:0)
+    {
+        return 0;
+    }
+
+    new rows;
+    cache_get_row_count(rows);
+
+    if (rows <= 0)
+    {
+        cache_delete(result);
+        return 0;
+    }
+
+    cache_get_value_name(0, "password_hash", output, output_size);
+    cache_delete(result);
+
     return 1;
+}
+
+stock Database_SaveAccount(const name[], const password_hash[])
+{
+    if (HopeCityDB == MySQL:0)
+    {
+        return 0;
+    }
+
+    new query[256];
+    mysql_format(
+        HopeCityDB,
+        query,
+        sizeof query,
+        "INSERT INTO hc_accounts (name, password_hash) VALUES ('%e', '%e')",
+        name,
+        password_hash
+    );
+
+    return Database_Exec(query);
 }
 
 stock Database_LoadPlayer(playerid)
 {
     Player_SetDefaults(playerid);
 
-    if (HopeCityDB == DB:0)
+    if (HopeCityDB == MySQL:0)
     {
         return 0;
     }
 
     new query[256];
-    format(
+    mysql_format(
+        HopeCityDB,
         query,
         sizeof query,
-        "SELECT money, skin, interior, health, armor, pos_x, pos_y, pos_z, angle FROM accounts WHERE name = '%s' LIMIT 1",
+        "SELECT money, skin, interior, health, armor, pos_x, pos_y, pos_z, angle FROM hc_accounts WHERE name = '%e' LIMIT 1",
         PlayerData[playerid][Player_Name]
     );
 
-    new DBResult:result = db_query(HopeCityDB, query);
+    new Cache:result = mysql_query(HopeCityDB, query);
 
-    if (!result)
+    if (result == Cache:0)
     {
         return 0;
     }
 
-    if (db_num_rows(result) > 0)
+    new rows;
+    cache_get_row_count(rows);
+
+    if (rows > 0)
     {
-        PlayerData[playerid][Player_Money] = db_get_field_int(result, 0);
-        PlayerData[playerid][Player_Skin] = db_get_field_int(result, 1);
-        PlayerData[playerid][Player_Interior] = db_get_field_int(result, 2);
-        PlayerData[playerid][Player_Health] = db_get_field_float(result, 3);
-        PlayerData[playerid][Player_Armor] = db_get_field_float(result, 4);
-        PlayerData[playerid][Player_PosX] = db_get_field_float(result, 5);
-        PlayerData[playerid][Player_PosY] = db_get_field_float(result, 6);
-        PlayerData[playerid][Player_PosZ] = db_get_field_float(result, 7);
-        PlayerData[playerid][Player_Angle] = db_get_field_float(result, 8);
+        new value;
+        new Float:fvalue;
+
+        cache_get_value_name_int(0, "money", value);
+        PlayerData[playerid][Player_Money] = value;
+
+        cache_get_value_name_int(0, "skin", value);
+        PlayerData[playerid][Player_Skin] = value;
+
+        cache_get_value_name_int(0, "interior", value);
+        PlayerData[playerid][Player_Interior] = value;
+
+        cache_get_value_name_float(0, "health", fvalue);
+        PlayerData[playerid][Player_Health] = fvalue;
+
+        cache_get_value_name_float(0, "armor", fvalue);
+        PlayerData[playerid][Player_Armor] = fvalue;
+
+        cache_get_value_name_float(0, "pos_x", fvalue);
+        PlayerData[playerid][Player_PosX] = fvalue;
+
+        cache_get_value_name_float(0, "pos_y", fvalue);
+        PlayerData[playerid][Player_PosY] = fvalue;
+
+        cache_get_value_name_float(0, "pos_z", fvalue);
+        PlayerData[playerid][Player_PosZ] = fvalue;
+
+        cache_get_value_name_float(0, "angle", fvalue);
+        PlayerData[playerid][Player_Angle] = fvalue;
     }
 
-    db_free_result(result);
+    cache_delete(result);
 
     if (PlayerData[playerid][Player_Health] < 1.0)
     {
@@ -129,7 +222,7 @@ stock Database_LoadPlayer(playerid)
 
 stock Database_SavePlayer(playerid)
 {
-    if (HopeCityDB == DB:0)
+    if (HopeCityDB == MySQL:0)
     {
         return 0;
     }
@@ -147,10 +240,11 @@ stock Database_SavePlayer(playerid)
     GetPlayerArmour(playerid, armor);
 
     new query[512];
-    format(
+    mysql_format(
+        HopeCityDB,
         query,
         sizeof query,
-        "UPDATE accounts SET money = %d, skin = %d, interior = %d, health = %.1f, armor = %.1f, pos_x = %.3f, pos_y = %.3f, pos_z = %.3f, angle = %.1f WHERE name = '%s'",
+        "UPDATE hc_accounts SET money = %d, skin = %d, interior = %d, health = %.1f, armor = %.1f, pos_x = %.3f, pos_y = %.3f, pos_z = %.3f, angle = %.1f WHERE name = '%e'",
         GetPlayerMoney(playerid),
         GetPlayerSkin(playerid),
         GetPlayerInterior(playerid),
@@ -163,134 +257,18 @@ stock Database_SavePlayer(playerid)
         PlayerData[playerid][Player_Name]
     );
 
-    return Database_Exec(query);
-}
-
-stock Database_Init()
-{
-    HopeCityDB = db_open("hopecity.db");
-
-    if (HopeCityDB == DB:0)
-    {
-        print("[DATABASE] Failed to open SQLite database.");
-        return 0;
-    }
-
-    print("[DATABASE] SQLite database opened.");
-
-    new DBResult:result = db_query(
-        HopeCityDB,
-        "CREATE TABLE IF NOT EXISTS accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')))"
-    );
-
-    if (result)
-    {
-        db_free_result(result);
-    }
-
-    Database_Migrate();
-
-    print("[DATABASE] Accounts table ready.");
-    return 1;
-}
-
-stock Database_AccountExists(const name[])
-{
-    if (HopeCityDB == DB:0)
-    {
-        return 0;
-    }
-
-    new query[256];
-    format(
-        query,
-        sizeof query,
-        "SELECT id FROM accounts WHERE name = '%s' LIMIT 1",
-        name
-    );
-
-    new DBResult:result = db_query(HopeCityDB, query);
-
-    if (!result)
-    {
-        return 0;
-    }
-
-    new exists = db_num_rows(result) > 0;
-
-    db_free_result(result);
-    return exists;
-}
-
-stock Database_GetPasswordHash(const name[], output[], output_size)
-{
-    if (HopeCityDB == DB:0)
-    {
-        return 0;
-    }
-
-    new query[256];
-    format(
-        query,
-        sizeof query,
-        "SELECT password_hash FROM accounts WHERE name = '%s' LIMIT 1",
-        name
-    );
-
-    new DBResult:result = db_query(HopeCityDB, query);
-
-    if (!result)
-    {
-        return 0;
-    }
-
-    if (db_num_rows(result) <= 0)
-    {
-        db_free_result(result);
-        return 0;
-    }
-
-    db_get_field(result, 0, output, output_size);
-    db_free_result(result);
-
-    return 1;
-}
-
-stock Database_SaveAccount(const name[], const password_hash[])
-{
-    if (HopeCityDB == DB:0)
-    {
-        return 0;
-    }
-
-    new query[512];
-    format(
-        query,
-        sizeof query,
-        "INSERT INTO accounts (name, password_hash) VALUES ('%s', '%s')",
-        name,
-        password_hash
-    );
-
-    new DBResult:result = db_query(HopeCityDB, query);
-
-    if (!result)
-    {
-        return 0;
-    }
-
-    db_free_result(result);
+    mysql_tquery(HopeCityDB, query);
     return 1;
 }
 
 stock Database_Close()
 {
-    if (HopeCityDB != DB:0)
+    if (HopeCityDB != MySQL:0)
     {
-        db_close(HopeCityDB);
-        HopeCityDB = DB:0;
+        mysql_close(HopeCityDB);
+        HopeCityDB = MySQL:0;
     }
 
-    print("[DATABASE] SQLite database closed.");
+    print("[DATABASE] MySQL connection closed.");
     return 1;
 }

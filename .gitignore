@@ -41,3 +41,5 @@ server.cfg
 tools/pawn/compiler/build/
 *.db
 scriptfiles/
+*.so
+mysql.ini
