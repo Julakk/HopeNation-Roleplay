@@ -6,6 +6,7 @@
 #include "modules/player.pwn"
 #include "modules/commands.pwn"
 #include "modules/utils.pwn"
+#include "modules/database.pwn"
 #include "modules/auth.pwn"
 
 main()
@@ -22,6 +23,7 @@ public OnGameModeInit()
     Player_Init();
     Commands_Init();
     Auth_Init();
+    Database_Init();
 
     AddPlayerClass(
         0,
@@ -53,6 +55,13 @@ public OnPlayerSpawn(playerid)
 public OnPlayerDisconnect(playerid, reason)
 {
     Player_OnDisconnect(playerid, reason);
+    Auth_OnDisconnect(playerid);
+    return 1;
+}
+
+public OnGameModeExit()
+{
+    Database_Close();
     return 1;
 }
 
