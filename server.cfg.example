@@ -1,6 +1,6 @@
 echo Executing HopeCity server configuration...
 lanmode 0
-rcon_password Julakjunior
+rcon_password GANTI_INI
 maxplayers 50
 port 7777
 hostname HopeCity Roleplay | Development
