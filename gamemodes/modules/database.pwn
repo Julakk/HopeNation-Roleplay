@@ -7,6 +7,165 @@
 
 new DB:HopeCityDB;
 
+stock Database_Exec(const query[])
+{
+    if (HopeCityDB == DB:0)
+    {
+        return 0;
+    }
+
+    new DBResult:result = db_query(HopeCityDB, query);
+
+    if (!result)
+    {
+        return 0;
+    }
+
+    db_free_result(result);
+    return 1;
+}
+
+stock Database_ColumnExists(const table[], const column[])
+{
+    new query[96];
+    new name[32];
+    new found = 0;
+
+    format(query, sizeof query, "PRAGMA table_info(%s)", table);
+
+    new DBResult:result = db_query(HopeCityDB, query);
+
+    if (!result)
+    {
+        return 0;
+    }
+
+    if (db_num_rows(result) > 0)
+    {
+        do
+        {
+            db_get_field(result, 1, name, sizeof name);
+
+            if (!strcmp(name, column))
+            {
+                found = 1;
+                break;
+            }
+        }
+        while (db_next_row(result));
+    }
+
+    db_free_result(result);
+    return found;
+}
+
+stock Database_Migrate()
+{
+    if (Database_ColumnExists("accounts", "money"))
+    {
+        return 1;
+    }
+
+    Database_Exec("ALTER TABLE accounts ADD COLUMN money INTEGER NOT NULL DEFAULT 500");
+    Database_Exec("ALTER TABLE accounts ADD COLUMN skin INTEGER NOT NULL DEFAULT 0");
+    Database_Exec("ALTER TABLE accounts ADD COLUMN interior INTEGER NOT NULL DEFAULT 0");
+    Database_Exec("ALTER TABLE accounts ADD COLUMN health REAL NOT NULL DEFAULT 100.0");
+    Database_Exec("ALTER TABLE accounts ADD COLUMN armor REAL NOT NULL DEFAULT 0.0");
+    Database_Exec("ALTER TABLE accounts ADD COLUMN pos_x REAL NOT NULL DEFAULT 1481.0");
+    Database_Exec("ALTER TABLE accounts ADD COLUMN pos_y REAL NOT NULL DEFAULT -1771.0");
+    Database_Exec("ALTER TABLE accounts ADD COLUMN pos_z REAL NOT NULL DEFAULT 18.8");
+    Database_Exec("ALTER TABLE accounts ADD COLUMN angle REAL NOT NULL DEFAULT 90.0");
+
+    print("[DATABASE] Player data columns added.");
+    return 1;
+}
+
+stock Database_LoadPlayer(playerid)
+{
+    Player_SetDefaults(playerid);
+
+    if (HopeCityDB == DB:0)
+    {
+        return 0;
+    }
+
+    new query[256];
+    format(
+        query,
+        sizeof query,
+        "SELECT money, skin, interior, health, armor, pos_x, pos_y, pos_z, angle FROM accounts WHERE name = '%s' LIMIT 1",
+        PlayerData[playerid][Player_Name]
+    );
+
+    new DBResult:result = db_query(HopeCityDB, query);
+
+    if (!result)
+    {
+        return 0;
+    }
+
+    if (db_num_rows(result) > 0)
+    {
+        PlayerData[playerid][Player_Money] = db_get_field_int(result, 0);
+        PlayerData[playerid][Player_Skin] = db_get_field_int(result, 1);
+        PlayerData[playerid][Player_Interior] = db_get_field_int(result, 2);
+        PlayerData[playerid][Player_Health] = db_get_field_float(result, 3);
+        PlayerData[playerid][Player_Armor] = db_get_field_float(result, 4);
+        PlayerData[playerid][Player_PosX] = db_get_field_float(result, 5);
+        PlayerData[playerid][Player_PosY] = db_get_field_float(result, 6);
+        PlayerData[playerid][Player_PosZ] = db_get_field_float(result, 7);
+        PlayerData[playerid][Player_Angle] = db_get_field_float(result, 8);
+    }
+
+    db_free_result(result);
+
+    if (PlayerData[playerid][Player_Health] < 1.0)
+    {
+        PlayerData[playerid][Player_Health] = 100.0;
+    }
+
+    return 1;
+}
+
+stock Database_SavePlayer(playerid)
+{
+    if (HopeCityDB == DB:0)
+    {
+        return 0;
+    }
+
+    if (!PlayerData[playerid][Player_LoggedIn] || !PlayerData[playerid][Player_Spawned])
+    {
+        return 0;
+    }
+
+    new Float:x, Float:y, Float:z, Float:angle, Float:health, Float:armor;
+
+    GetPlayerPos(playerid, x, y, z);
+    GetPlayerFacingAngle(playerid, angle);
+    GetPlayerHealth(playerid, health);
+    GetPlayerArmour(playerid, armor);
+
+    new query[512];
+    format(
+        query,
+        sizeof query,
+        "UPDATE accounts SET money = %d, skin = %d, interior = %d, health = %.1f, armor = %.1f, pos_x = %.3f, pos_y = %.3f, pos_z = %.3f, angle = %.1f WHERE name = '%s'",
+        GetPlayerMoney(playerid),
+        GetPlayerSkin(playerid),
+        GetPlayerInterior(playerid),
+        health,
+        armor,
+        x,
+        y,
+        z,
+        angle,
+        PlayerData[playerid][Player_Name]
+    );
+
+    return Database_Exec(query);
+}
+
 stock Database_Init()
 {
     HopeCityDB = db_open("hopecity.db");
@@ -28,6 +187,8 @@ stock Database_Init()
     {
         db_free_result(result);
     }
+
+    Database_Migrate();
 
     print("[DATABASE] Accounts table ready.");
     return 1;

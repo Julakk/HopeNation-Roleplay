@@ -17,6 +17,20 @@ main()
     print("====================================");
 }
 
+forward Player_AutoSave();
+public Player_AutoSave()
+{
+    for (new i = 0; i < MAX_PLAYERS; i++)
+    {
+        if (IsPlayerConnected(i))
+        {
+            Database_SavePlayer(i);
+        }
+    }
+
+    return 1;
+}
+
 public OnGameModeInit()
 {
     Core_Init();
@@ -24,6 +38,7 @@ public OnGameModeInit()
     Commands_Init();
     Auth_Init();
     Database_Init();
+    SetTimer("Player_AutoSave", 300000, true);
 
     AddPlayerClass(
         0,
@@ -65,6 +80,7 @@ public OnPlayerSpawn(playerid)
 
 public OnPlayerDisconnect(playerid, reason)
 {
+    Database_SavePlayer(playerid);
     Player_OnDisconnect(playerid, reason);
     Auth_OnDisconnect(playerid);
     return 1;
@@ -72,6 +88,14 @@ public OnPlayerDisconnect(playerid, reason)
 
 public OnGameModeExit()
 {
+    for (new i = 0; i < MAX_PLAYERS; i++)
+    {
+        if (IsPlayerConnected(i))
+        {
+            Database_SavePlayer(i);
+        }
+    }
+
     Database_Close();
     return 1;
 }

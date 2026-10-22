@@ -199,7 +199,18 @@ stock Auth_OnDialogResponse(playerid, dialogid, response, inputtext[])
             SendClientMessage(playerid, 0x00FF00FF, "Login berhasil!");
             SendClientMessage(playerid, 0xFFFFFFFF, "Selamat bermain di HopeCity Roleplay.");
 
-            SetSpawnInfo(playerid, 0, 0, 1481.0, -1771.0, 18.8, 90.0, 0, 0, 0, 0, 0, 0);
+            Database_LoadPlayer(playerid);
+
+            SetSpawnInfo(
+                playerid,
+                0,
+                PlayerData[playerid][Player_Skin],
+                PlayerData[playerid][Player_PosX],
+                PlayerData[playerid][Player_PosY],
+                PlayerData[playerid][Player_PosZ],
+                PlayerData[playerid][Player_Angle],
+                0, 0, 0, 0, 0, 0
+            );
             SpawnPlayer(playerid);
             return 1;
         }
