@@ -43,3 +43,4 @@ tools/pawn/compiler/build/
 scriptfiles/
 *.so
 mysql.ini
+backup/

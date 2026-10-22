@@ -116,6 +116,7 @@ stock Database_Init()
     // migrasi untuk tabel lama (aman dijalankan berulang)
     Database_EnsureColumn("hc_accounts", "last_login", "DATETIME NULL DEFAULT NULL");
     Database_EnsureColumn("hc_accounts", "last_ip", "VARCHAR(16) NULL DEFAULT NULL");
+    Database_EnsureColumn("hc_accounts", "admin", "TINYINT UNSIGNED NOT NULL DEFAULT 0");
 
     print("[DATABASE] Accounts table ready.");
     return 1;
@@ -164,7 +165,7 @@ stock Database_LoginQuery(playerid, session, password[])
         HopeCityDB,
         query,
         sizeof query,
-        "SELECT id, password_hash, money, skin, interior, health, armor, pos_x, pos_y, pos_z, angle FROM hc_accounts WHERE name = '%e' LIMIT 1",
+        "SELECT id, password_hash, admin, money, skin, interior, health, armor, pos_x, pos_y, pos_z, angle FROM hc_accounts WHERE name = '%e' LIMIT 1",
         PlayerData[playerid][Player_Name]
     );
 
@@ -189,6 +190,8 @@ stock Database_ReadPlayerRow(playerid)
 
     cache_get_value_name_int(0, "id", value);
     PlayerData[playerid][Player_ID] = value;
+    cache_get_value_name_int(0, "admin", value);
+    PlayerData[playerid][Player_Admin] = value;
 
     cache_get_value_name_int(0, "money", value);
     PlayerData[playerid][Player_Money] = value;

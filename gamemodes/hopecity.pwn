@@ -8,6 +8,7 @@
 #include "modules/utils.pwn"
 #include "modules/database.pwn"
 #include "modules/auth.pwn"
+#include "command/admin.inc"
 
 main()
 {
@@ -37,6 +38,7 @@ public OnGameModeInit()
     Player_Init();
     Commands_Init();
     Auth_Init();
+    Admin_Init();
     Database_Init();
     new autosaveFn[] = "Player_AutoSave";
     SetTimer(autosaveFn, 300000, true);
@@ -76,12 +78,14 @@ public OnPlayerRequestSpawn(playerid)
 public OnPlayerSpawn(playerid)
 {
     Player_OnSpawn(playerid);
+    Admin_OnSpawn(playerid);
     return 1;
 }
 
 public OnPlayerDisconnect(playerid, reason)
 {
     Database_SavePlayer(playerid);
+    Admin_OnDisconnect(playerid);
     Player_OnDisconnect(playerid, reason);
     Auth_OnDisconnect(playerid);
     return 1;
@@ -106,6 +110,11 @@ public OnPlayerCommandText(playerid, cmdtext[])
     if (!PlayerData[playerid][Player_LoggedIn])
     {
         SendClientMessage(playerid, 0xFF0000FF, "Login dulu untuk memakai command.");
+        return 1;
+    }
+
+    if (Admin_OnCommandText(playerid, cmdtext))
+    {
         return 1;
     }
 

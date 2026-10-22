@@ -7,6 +7,7 @@ enum E_PLAYER_DATA
 {
     Player_Name[MAX_PLAYER_NAME],
     Player_ID,
+    Player_Admin,
     Player_LoggedIn,
     Player_Spawned,
     Player_Money,
@@ -47,6 +48,7 @@ stock Player_OnConnect(playerid)
     GetPlayerName(playerid, PlayerData[playerid][Player_Name], MAX_PLAYER_NAME);
 
     PlayerData[playerid][Player_ID] = 0;
+    PlayerData[playerid][Player_Admin] = 0;
     PlayerData[playerid][Player_LoggedIn] = 0;
     PlayerData[playerid][Player_Spawned] = 0;
 
@@ -76,6 +78,7 @@ stock Player_OnDisconnect(playerid, reason)
     #pragma unused reason
 
     PlayerData[playerid][Player_ID] = 0;
+    PlayerData[playerid][Player_Admin] = 0;
     PlayerData[playerid][Player_LoggedIn] = 0;
     PlayerData[playerid][Player_Spawned] = 0;
 
