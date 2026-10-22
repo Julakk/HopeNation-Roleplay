@@ -36,3 +36,6 @@ tools/pawn/compiler/build-*/
 # Local Pawn compiler
 tools/pawn/
 server.cfg
+*.amx
+*.bak
+tools/pawn/compiler/build/
