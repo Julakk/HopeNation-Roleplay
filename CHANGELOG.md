@@ -71,3 +71,6 @@ Semua perubahan penting pada HopeCity Roleplay dicatat di sini.
 - Sistem admin: command/admin.inc (duty, HUD, kick, freeze, set HP/armor/skin, give money, announce, setadmin).
 - command/admin_extra.inc: HUD panel /acmd, TP wajib duty (/gotoco /gotols /gotolv /gotosf /sendto), /spec, /mute, /warn, /slap, /spawn, /clearchat, /veh, /fixveh, /ban, /unban, /setweather, /settime, /players, /acheck.
 - Tabel baru hc_bans, kolom admin di hc_accounts.
+
+## 2026-10-22 (ahelp panel)
+- /acmd dihapus; /ahelp sekarang menampilkan panel HUD berhalaman (/ahelp [hal], /ahelp tutup), otomatis tertutup setelah 20 detik.

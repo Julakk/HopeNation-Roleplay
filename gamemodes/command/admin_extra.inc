@@ -51,8 +51,6 @@ return neg ? -result : result;
 
 // 1 = ban juga berdasarkan IP (hati-hati: IP seluler sering dipakai banyak orang)
 #define ADMINX_BAN_BY_IP 0
-// tinggi 1 baris teks pada kotak HUD /acmd (kalau kotak kepanjangan/kependekan, ubah angka ini)
-#define ADMINX_LINE_UNIT 1.14
 #define ADMINX_WARN_LIMIT 3
 
 new AdminMuted[MAX_PLAYERS];
@@ -65,8 +63,6 @@ new AdminSpecWorld[MAX_PLAYERS];
 new Float:AdminSpecData[MAX_PLAYERS][6];
 new AdminVehicle[MAX_PLAYERS];
 new AdminCmdHudOn[MAX_PLAYERS];
-new PlayerText:AdminCmdBox[MAX_PLAYERS];
-new PlayerText:AdminCmdText[MAX_PLAYERS];
 
 forward AdminX_Timer();
 forward AdminX_OnBanCheck(playerid, session);
@@ -116,44 +112,136 @@ stock AdminX_IsFloat(const text[])
 }
 
 // command teleport: level cukup + WAJIB sedang duty
+
+
+// ---------------------- teleport ----------------------
+new AdminTpTicket[MAX_PLAYERS];
+
+forward AdminX_TpUnlock(playerid, ticket);
+
+// command teleport: level cukup + WAJIB sedang duty
 stock AdminX_CheckTP(playerid, level)
 {
+    new msg[96];
+
     if (PlayerData[playerid][Player_Admin] < level)
     {
-        SendClientMessage(playerid, ADMIN_COLOR_ERROR, "Kamu tidak punya akses untuk command ini.");
+        format(msg, sizeof msg, "Command ini butuh admin level %d (level kamu: %d).", level, PlayerData[playerid][Player_Admin]);
+        SendClientMessage(playerid, ADMIN_COLOR_ERROR, msg);
+        printf("[ADMINX] TP ditolak (level kurang): %s level=%d butuh=%d", PlayerData[playerid][Player_Name], PlayerData[playerid][Player_Admin], level);
         return 0;
     }
 
     if (!AdminDuty[playerid])
     {
         SendClientMessage(playerid, ADMIN_COLOR_ERROR, "Kamu harus ON DUTY (/aduty) dulu sebelum bisa teleport.");
+        printf("[ADMINX] TP ditolak (belum duty): %s", PlayerData[playerid][Player_Name]);
         return 0;
     }
 
     return 1;
 }
 
-stock AdminX_TeleportTo(playerid, Float:x, Float:y, Float:z, interior, world)
+public AdminX_TpUnlock(playerid, ticket)
 {
-    new vehicleid = GetPlayerVehicleID(playerid);
-
-    if (vehicleid != 0 && GetPlayerState(playerid) == PLAYER_STATE_DRIVER)
+    if (!IsPlayerConnected(playerid) || AdminTpTicket[playerid] != ticket)
     {
-        SetVehiclePos(vehicleid, x, y, z);
-        LinkVehicleToInterior(vehicleid, interior);
-        SetVehicleVirtualWorld(vehicleid, world);
-    }
-    else
-    {
-        SetPlayerPos(playerid, x, y, z);
+        return 0;
     }
 
-    SetPlayerInterior(playerid, interior);
-    SetPlayerVirtualWorld(playerid, world);
+    TogglePlayerControllable(playerid, 1);
     return 1;
 }
 
-// ---------------------- teleport ----------------------
+stock AdminX_TeleportTo(playerid, Float:x, Float:y, Float:z, interior, world)
+{
+    new vehicleid = GetPlayerVehicleID(playerid);
+    new driving = (vehicleid != 0 && GetPlayerState(playerid) == PLAYER_STATE_DRIVER);
+
+    SetPlayerInterior(playerid, interior);
+    SetPlayerVirtualWorld(playerid, world);
+
+    if (driving)
+    {
+        LinkVehicleToInterior(vehicleid, interior);
+        SetVehicleVirtualWorld(vehicleid, world);
+        SetVehiclePos(vehicleid, x, y, z + 0.7);
+    }
+    else
+    {
+        SetPlayerPos(playerid, x, y, z + 0.7);
+
+        // tahan sebentar supaya map sempat ke-load (client mobile sering jatuh/nyangkut)
+        new timerFn[] = "AdminX_TpUnlock";
+
+        TogglePlayerControllable(playerid, 0);
+        AdminTpTicket[playerid]++;
+        SetTimerEx(timerFn, 1500, false, "dd", playerid, AdminTpTicket[playerid]);
+    }
+
+    SetCameraBehindPlayer(playerid);
+
+    printf("[ADMINX] TP id=%d -> %.1f, %.1f, %.1f (interior %d, vw %d)", playerid, x, y, z, interior, world);
+    return 1;
+}
+
+stock AdminX_CmdGotoPlayer(playerid, const cmdtext[], pos, bool:bring)
+{
+    if (!AdminX_CheckTP(playerid, 1))
+    {
+        return 1;
+    }
+
+    new token[16];
+    new msg[144];
+    new Float:x, Float:y, Float:z;
+
+    Admin_Token(cmdtext, pos, token);
+
+    if (!token[0])
+    {
+        SendClientMessage(playerid, ADMIN_COLOR_INFO, bring ? ("Gunakan: /gethere [id]") : ("Gunakan: /goto [id]"));
+        return 1;
+    }
+
+    new target = Admin_GetTarget(playerid, token);
+
+    if (target == INVALID_PLAYER_ID)
+    {
+        return 1;
+    }
+
+    if (target == playerid)
+    {
+        format(msg, sizeof msg, "Kamu tidak bisa memilih dirimu sendiri (ID kamu: %d). Sendirian? Pakai /gotolv /gotosf /gotoco.", playerid);
+        SendClientMessage(playerid, ADMIN_COLOR_ERROR, msg);
+        return 1;
+    }
+
+    if (bring)
+    {
+        if (!Admin_CanTarget(playerid, target))
+        {
+            return 1;
+        }
+
+        GetPlayerPos(playerid, x, y, z);
+        AdminX_TeleportTo(target, x + 1.0, y, z, GetPlayerInterior(playerid), GetPlayerVirtualWorld(playerid));
+
+        format(msg, sizeof msg, "[ADMIN] Kamu ditarik oleh %s.", PlayerData[playerid][Player_Name]);
+        SendClientMessage(target, ADMIN_COLOR_INFO, msg);
+        format(msg, sizeof msg, "[ADMIN] Kamu menarik %s ke posisimu.", PlayerData[target][Player_Name]);
+        SendClientMessage(playerid, ADMIN_COLOR_OK, msg);
+        return 1;
+    }
+
+    GetPlayerPos(target, x, y, z);
+    AdminX_TeleportTo(playerid, x + 1.0, y, z, GetPlayerInterior(target), GetPlayerVirtualWorld(target));
+
+    format(msg, sizeof msg, "[ADMIN] Kamu teleport ke %s.", PlayerData[target][Player_Name]);
+    SendClientMessage(playerid, ADMIN_COLOR_OK, msg);
+    return 1;
+}
 stock AdminX_CmdGotoPlace(playerid, place)
 {
     if (!AdminX_CheckTP(playerid, 1))
@@ -991,76 +1079,29 @@ stock AdminX_CmdACheck(playerid, const cmdtext[], pos)
     return 1;
 }
 
-stock AdminX_CmdHelp(playerid)
+
+// ---------------------- timer & hook ----------------------
+#define ADMINX_HELP_AUTOCLOSE 20000
+
+new PlayerText:AdminHelpBox[MAX_PLAYERS];
+new PlayerText:AdminHelpText[MAX_PLAYERS];
+new AdminHelpPage[MAX_PLAYERS];
+new AdminHelpTicket[MAX_PLAYERS];
+
+forward AdminX_HelpClose(playerid, ticket);
+
+stock AdminX_HelpPages(level)
 {
-    new level = PlayerData[playerid][Player_Admin];
+    new total = 2;
 
-    SendClientMessage(playerid, ADMIN_COLOR_INFO, "===== ADMIN COMMANDS =====");
-    SendClientMessage(playerid, -1, "Umum: /aduty /a /acmd /ahelp /players /acheck");
-    SendClientMessage(playerid, -1, "Teleport (wajib duty): /goto /gethere /gotoco /gotols /gotolv /gotosf");
-    SendClientMessage(playerid, -1, "Moderasi: /kick /mute /unmute /warn /freeze /unfreeze /spec /specoff");
+    if (level >= 2) total++;
+    if (level >= 3) total++;
+    if (level >= 4) total++;
 
-    if (level >= 2)
-    {
-        SendClientMessage(playerid, -1, "Lv2: /sethp /setarmor /slap /spawn /sendto /announce /clearchat");
-    }
-
-    if (level >= 3)
-    {
-        SendClientMessage(playerid, -1, "Lv3: /givemoney /setskin /veh /fixveh /ban /setweather /settime");
-    }
-
-    if (level >= 4)
-    {
-        SendClientMessage(playerid, -1, "Lv4: /unban");
-    }
-
-    if (level >= ADMIN_MAX_LEVEL || IsPlayerAdmin(playerid))
-    {
-        SendClientMessage(playerid, -1, "Lv5/RCON: /setadmin [id] [0-5]");
-    }
-
-    SendClientMessage(playerid, ADMIN_COLOR_INFO, "Ketik /acmd untuk panel command di layar. Command butuh duty aktif (kecuali info).");
-    return 1;
+    return total;
 }
 
-// ---------------------- HUD panel /acmd ----------------------
-stock AdminX_BuildCmdText(level, text[], size)
-{
-    new levelName[16];
-
-    Admin_LevelName(level, levelName);
-
-    format(text, size, "~r~PANEL COMMAND ADMIN~n~~w~Level %d (%s)~n~", level, levelName);
-    strcat(text, "~y~Umum:~n~~w~/aduty /a /acmd /ahelp~n~~w~/players /acheck~n~", size);
-    strcat(text, "~y~Teleport (wajib duty):~n~~w~/goto /gethere /gotoco~n~~w~/gotols /gotolv /gotosf~n~", size);
-    strcat(text, "~y~Moderasi:~n~~w~/kick /mute /unmute /warn~n~~w~/freeze /unfreeze /spec /specoff~n~", size);
-
-    if (level >= 2)
-    {
-        strcat(text, "~y~Lv2:~n~~w~/sethp /setarmor /slap /spawn~n~~w~/sendto /announce /clearchat~n~", size);
-    }
-
-    if (level >= 3)
-    {
-        strcat(text, "~y~Lv3:~n~~w~/givemoney /setskin /veh /fixveh~n~~w~/ban /setweather /settime~n~", size);
-    }
-
-    if (level >= 4)
-    {
-        strcat(text, "~y~Lv4:~n~~w~/unban~n~", size);
-    }
-
-    if (level >= 5)
-    {
-        strcat(text, "~y~Lv5:~n~~w~/setadmin~n~", size);
-    }
-
-    strcat(text, "~g~/acmd lagi untuk menutup", size);
-    return 1;
-}
-
-stock AdminX_CountLines(const text[])
+stock AdminX_HelpLines(const text[])
 {
     new lines = 1;
 
@@ -1075,72 +1116,145 @@ stock AdminX_CountLines(const text[])
     return lines;
 }
 
-stock AdminX_ShowCmdHud(playerid)
+stock AdminX_HelpBuild(page, total, level, text[], size)
 {
-    if (AdminCmdHudOn[playerid])
+    format(text, size, "~r~ADMIN PANEL ~w~(%d/%d)~n~", page, total);
+
+    switch (page)
     {
-        return 0;
+        case 1:
+        {
+            strcat(text, "~y~Umum~n~~w~/aduty /a /ahelp /players /acheck~n~", size);
+            strcat(text, "~y~Teleport (wajib duty)~n~~w~/goto /gethere /gotoco~n~~w~/gotols /gotolv /gotosf~n~", size);
+        }
+        case 2:
+        {
+            strcat(text, "~y~Moderasi~n~~w~/kick /mute /unmute /warn~n~~w~/freeze /unfreeze~n~~w~/spec /specoff~n~", size);
+        }
+        case 3:
+        {
+            strcat(text, "~y~Level 2~n~~w~/sethp /setarmor /slap /spawn~n~~w~/sendto /announce /clearchat~n~~w~(/sendto wajib duty)~n~", size);
+        }
+        case 4:
+        {
+            strcat(text, "~y~Level 3~n~~w~/givemoney /setskin /veh /fixveh~n~~w~/ban /setweather /settime~n~", size);
+        }
+        default:
+        {
+            strcat(text, "~y~Level 4~n~~w~/unban~n~", size);
+
+            if (level >= 5)
+            {
+                strcat(text, "~y~Level 5 / RCON~n~~w~/setadmin~n~", size);
+            }
+        }
     }
 
-    new placeholder[] = "_";
-    new text[700];
-
-    AdminX_BuildCmdText(PlayerData[playerid][Player_Admin], text, sizeof text);
-
-    new Float:boxHeight = float(AdminX_CountLines(text)) * ADMINX_LINE_UNIT + 1.0;
-
-    AdminCmdBox[playerid] = CreatePlayerTextDraw(playerid, 390.0, 100.0, placeholder);
-    PlayerTextDrawLetterSize(playerid, AdminCmdBox[playerid], 0.0, boxHeight);
-    PlayerTextDrawTextSize(playerid, AdminCmdBox[playerid], 612.0, 0.0);
-    PlayerTextDrawUseBox(playerid, AdminCmdBox[playerid], 1);
-    PlayerTextDrawBoxColor(playerid, AdminCmdBox[playerid], 0x000000AA);
-    PlayerTextDrawShow(playerid, AdminCmdBox[playerid]);
-
-    AdminCmdText[playerid] = CreatePlayerTextDraw(playerid, 396.0, 104.0, text);
-    PlayerTextDrawLetterSize(playerid, AdminCmdText[playerid], 0.22, 0.9);
-    PlayerTextDrawFont(playerid, AdminCmdText[playerid], 1);
-    PlayerTextDrawColor(playerid, AdminCmdText[playerid], -1);
-    PlayerTextDrawSetOutline(playerid, AdminCmdText[playerid], 1);
-    PlayerTextDrawSetProportional(playerid, AdminCmdText[playerid], 1);
-    PlayerTextDrawShow(playerid, AdminCmdText[playerid]);
-
-    AdminCmdHudOn[playerid] = 1;
+    strcat(text, "~g~/ahelp [hal] ganti | /ahelp tutup", size);
     return 1;
 }
 
-stock AdminX_HideCmdHud(playerid)
+stock AdminX_HelpHide(playerid)
 {
     if (!AdminCmdHudOn[playerid])
     {
         return 0;
     }
 
-    PlayerTextDrawDestroy(playerid, AdminCmdText[playerid]);
-    PlayerTextDrawDestroy(playerid, AdminCmdBox[playerid]);
+    PlayerTextDrawDestroy(playerid, AdminHelpText[playerid]);
+    PlayerTextDrawDestroy(playerid, AdminHelpBox[playerid]);
     AdminCmdHudOn[playerid] = 0;
     return 1;
 }
 
-stock AdminX_CmdAcmd(playerid)
+public AdminX_HelpClose(playerid, ticket)
+{
+    if (!IsPlayerConnected(playerid) || AdminHelpTicket[playerid] != ticket)
+    {
+        return 0;
+    }
+
+    AdminX_HelpHide(playerid);
+    return 1;
+}
+
+stock AdminX_HelpShow(playerid, page)
+{
+    new level = PlayerData[playerid][Player_Admin];
+    new total = AdminX_HelpPages(level);
+    new placeholder[] = "_";
+    new timerFn[] = "AdminX_HelpClose";
+    new text[256];
+
+    if (page < 1) page = 1;
+    if (page > total) page = total;
+
+    AdminX_HelpHide(playerid);
+    AdminX_HelpBuild(page, total, level, text, sizeof text);
+
+    new Float:boxHeight = float(AdminX_HelpLines(text)) * 1.1 + 0.9;
+
+    printf("[ADMINX] /ahelp: %s halaman %d/%d (%d karakter)", PlayerData[playerid][Player_Name], page, total, strlen(text));
+
+    AdminHelpBox[playerid] = CreatePlayerTextDraw(playerid, 28.0, 90.0, placeholder);
+    PlayerTextDrawLetterSize(playerid, AdminHelpBox[playerid], 0.0, boxHeight);
+    PlayerTextDrawTextSize(playerid, AdminHelpBox[playerid], 215.0, 0.0);
+    PlayerTextDrawUseBox(playerid, AdminHelpBox[playerid], 1);
+    PlayerTextDrawBoxColor(playerid, AdminHelpBox[playerid], 0x000000AA);
+    PlayerTextDrawShow(playerid, AdminHelpBox[playerid]);
+
+    AdminHelpText[playerid] = CreatePlayerTextDraw(playerid, 34.0, 95.0, text);
+    PlayerTextDrawLetterSize(playerid, AdminHelpText[playerid], 0.25, 1.1);
+    PlayerTextDrawFont(playerid, AdminHelpText[playerid], 1);
+    PlayerTextDrawColor(playerid, AdminHelpText[playerid], -1);
+    PlayerTextDrawSetOutline(playerid, AdminHelpText[playerid], 1);
+    PlayerTextDrawSetProportional(playerid, AdminHelpText[playerid], 1);
+    PlayerTextDrawShow(playerid, AdminHelpText[playerid]);
+
+    AdminCmdHudOn[playerid] = 1;
+    AdminHelpPage[playerid] = page;
+    AdminHelpTicket[playerid]++;
+    SetTimerEx(timerFn, ADMINX_HELP_AUTOCLOSE, false, "dd", playerid, AdminHelpTicket[playerid]);
+
+    printf("[ADMINX] /ahelp: panel tampil untuk %s", PlayerData[playerid][Player_Name]);
+    return 1;
+}
+
+stock AdminX_CmdHelp(playerid, const cmdtext[], pos)
 {
     if (!Admin_Check(playerid, 1, 0))
     {
         return 1;
     }
 
-    if (AdminCmdHudOn[playerid])
+    new token[8];
+
+    Admin_Token(cmdtext, pos, token);
+
+    if (Admin_IsNumeric(token))
     {
-        AdminX_HideCmdHud(playerid);
-    }
-    else
-    {
-        AdminX_ShowCmdHud(playerid);
+        AdminX_HelpShow(playerid, strval(token));
+        return 1;
     }
 
+    if (AdminCmdHudOn[playerid])
+    {
+        AdminHelpTicket[playerid]++;
+        AdminX_HelpHide(playerid);
+        return 1;
+    }
+
+    AdminX_HelpShow(playerid, 1);
     return 1;
 }
 
-// ---------------------- timer & hook ----------------------
+
+
+// isi tiap section panel, return jumlah baris (0 = section tidak ditampilkan untuk level ini)
+
+
+
+
 public AdminX_Timer()
 {
     for (new i = 0; i < MAX_PLAYERS; i++)
@@ -1280,10 +1394,11 @@ stock AdminX_OnCommandText(playerid, const cmdtext[])
 
     Admin_Token(cmdtext, pos, cmd);
 
-    if (!strcmp(cmd, "ahelp", true)) return AdminX_CmdHelp(playerid);
-    if (!strcmp(cmd, "acmd", true)) return AdminX_CmdAcmd(playerid);
+    if (!strcmp(cmd, "ahelp", true)) return AdminX_CmdHelp(playerid, cmdtext, pos);
     if (!strcmp(cmd, "players", true)) return AdminX_CmdPlayers(playerid);
     if (!strcmp(cmd, "acheck", true)) return AdminX_CmdACheck(playerid, cmdtext, pos);
+    if (!strcmp(cmd, "goto", true)) return AdminX_CmdGotoPlayer(playerid, cmdtext, pos, false);
+    if (!strcmp(cmd, "gethere", true)) return AdminX_CmdGotoPlayer(playerid, cmdtext, pos, true);
     if (!strcmp(cmd, "gotols", true)) return AdminX_CmdGotoPlace(playerid, 0);
     if (!strcmp(cmd, "gotolv", true)) return AdminX_CmdGotoPlace(playerid, 1);
     if (!strcmp(cmd, "gotosf", true)) return AdminX_CmdGotoPlace(playerid, 2);
@@ -1305,4 +1420,31 @@ stock AdminX_OnCommandText(playerid, const cmdtext[])
     if (!strcmp(cmd, "fixveh", true)) return AdminX_CmdFixVeh(playerid);
 
     return 0;
+}
+
+// ---------------------- TP lewat peta (wajib duty) ----------------------
+public OnPlayerClickMap(playerid, Float:fX, Float:fY, Float:fZ)
+{
+#pragma unused fZ
+if (PlayerData[playerid][Player_Admin] < 1)
+{
+return 1;
+}
+if (!AdminX_CheckTP(playerid, 1))
+{
+return 1;
+}
+if (GetPlayerInterior(playerid) != 0)
+{
+SendClientMessage(playerid, ADMIN_COLOR_ERROR, "Tidak bisa TP peta saat di dalam interior.");
+return 1;
+}
+if (GetPlayerState(playerid) != PLAYER_STATE_ONFOOT)
+{
+SendClientMessage(playerid, ADMIN_COLOR_ERROR, "Turun dari kendaraan dulu sebelum TP peta.");
+return 1;
+}
+SetPlayerPosFindZ(playerid, fX, fY, 999.0);
+SendClientMessage(playerid, ADMIN_COLOR_INFO, "[ADMIN] Teleport lewat peta berhasil.");
+return 1;
 }
